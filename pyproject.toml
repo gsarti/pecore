@@ -1,0 +1,110 @@
+[build-system]
+requires = ["setuptools>=60.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pecore"
+description = "Plausibility Evaluation of Context Reliance"
+readme = "README.md"
+license = "Apache 2.0"
+authors = [
+  {name = "Gabriele Sarti", email = "g.sarti@rug.nl"},
+]
+version = "0.1.0"
+requires-python = ">=3.8"
+dependencies = [
+    "numpy",
+    "pandas",
+    "sacrebleu",
+    "datasets",
+    "torch",
+    "transformers",
+    "inseq",
+    "tqdm",
+    "scikit-learn",
+    "stanza",
+    "sentencepiece",
+    "tqdm",
+    "unbabel-comet",
+    "black",
+    "pytest",
+    "ruff",
+]
+
+[project.urls]
+homepage = "https://github.com/gsarti/pecore"
+
+[tool.setuptools]
+py-modules = ["pecore"]
+
+
+[tool.black]
+# https://github.com/psf/black
+target-version = ["py38"]
+preview = true
+line-length = 119
+color = true
+
+exclude = '''
+/(
+    \.git
+    | \.hg
+    | \.mypy_cache
+    | \.tox
+    | \.venv
+    | _build
+    | buck-out
+    | build
+    | dist
+    | env
+    | venv
+)/
+'''
+
+[tool.ruff]
+target-version = "py38"
+exclude = [
+    ".git",
+    ".vscode",
+    ".github",
+    "__pycache__",
+    "old",
+    "build",
+    "htmlcov",
+    "dev_examples",
+    "dist",
+    ".tox",
+    "temp",
+    "*.egg",
+    "venv",
+    ".venv",
+]
+fix = true
+ignore = [
+    "C901",
+    "E731",
+    "E741",
+    "F821",
+    "C901",
+    "B006",
+    "PLR2004",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+line-length = 119
+select = [
+    "E", # pycodestyle errors
+    "F", # pyflakes
+    "W", # pycodestyle warnings
+    "C", # flake8-comprehensions
+    "B", # flake8-bugbear
+    "Q", # flake8-quotes
+    "I", # isort
+    "UP", # flake8-pyupgrade
+    "PLC", # flake8-pylint
+    "PLE", # flake8-pylint
+    "PLR", # flake8-pylint
+    "PLW", # flake8-pylint
+]
+src = ["pecore", "scripts", "tests"]
