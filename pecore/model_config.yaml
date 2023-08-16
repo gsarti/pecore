@@ -1,0 +1,9 @@
+marian-small:
+  batch_size: 8
+marian-big:
+  batch_size: 4
+mbart50-1toM:
+  batch_size: 1
+  lang_map:
+    eng: en_XX
+    fra: fr_XX

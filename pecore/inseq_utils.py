@@ -1,7 +1,9 @@
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import inseq
+import pandas as pd
 import torch
+from inseq import AttributionModel, FeatureAttributionOutput
 from inseq.attr.step_functions import StepFunctionArgs, _get_contrast_output
 from inseq.data import FeatureAttributionInput
 from inseq.utils import logits_kl_divergence

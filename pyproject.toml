@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "pecore"
 description = "Plausibility Evaluation of Context Reliance"
 readme = "README.md"
-license = "Apache 2.0"
+license = { file = "LICENSE" }
 authors = [
   {name = "Gabriele Sarti", email = "g.sarti@rug.nl"},
 ]
@@ -22,7 +22,9 @@ dependencies = [
     "inseq",
     "tqdm",
     "scikit-learn",
+    "simalign",
     "stanza",
+    "strenum",
     "sentencepiece",
     "tqdm",
     "unbabel-comet",

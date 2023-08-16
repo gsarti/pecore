@@ -17,6 +17,24 @@ def tokenize_model(text: str, model):
     return [x.replace("▁", "") for x in out.input_tokens[0] if x not in ["<pad>", "</s>", "fr_XX"]]
 
 
+def get_aligned_gender_annotations(ref_text, contrast_ref_text, mt_text) -> List[Tuple[str, str]]:
+    """Returns a list of 0s and 1s, where 0 means that the word is not in the MT output and 1 means that it is."""
+    ref_tok = re.findall(r"\w+\b", ref_text)
+    contrast_ref_tok = re.findall(r"\w+\b", contrast_ref_text)
+    if not isinstance(mt_text, str):
+        return [0]
+    mt_tok = [x.lower() for x in re.findall(r"\w+\b", mt_text)]
+    keywords = [ref for ref, con in zip(ref_tok, contrast_ref_tok) if ref != con]
+    out = []
+    for kw in keywords:
+        if kw.lower() not in mt_tok:
+            out += [0]
+        else:
+            out += [1]
+            mt_tok.remove(kw.lower())
+    return out
+
+
 def get_tokens_with_cue_target_tags(txt_tag: str, txt_clean: str):
     untagged_toks = tokenize(txt_clean)
     tagged_toks = tokenize(txt_tag, is_tagged=True)

@@ -1,17 +1,12 @@
 {
     "[python]": {
-        "editor.defaultFormatter": "ms-python.black-formatter",
         "editor.formatOnSave": true,
         "editor.codeActionsOnSave": {
-            "source.fixAll": true
+            "source.fixAll.ruff": true,
+            "source.organizeImports.ruff": true
         },
+        "editor.defaultFormatter": "ms-python.black-formatter",
     },
-    "python.formatting.provider": "none",
-    "python.formatting.blackArgs": [
-        "--line-length",
-        "119",
-        "--preview"
-    ],
     "python.analysis.typeCheckingMode": "off",
     "ruff.args": [
         "--config=/home/gsarti/projects/pecore/pyproject.toml"
