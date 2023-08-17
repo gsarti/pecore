@@ -7,7 +7,6 @@ tqdm
 black
 pytest
 ruff
-simalign==0.3
 sacrebleu==2.3.1
 scikit-learn==1.2.2
 sentencepiece==0.1.99

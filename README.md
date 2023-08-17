@@ -12,6 +12,41 @@ python scripts/translate.py \
     --context_word_dropout 1
 ```
 
+## Evaluate a Context-Aware NMT Model
+
+```shell
+python scripts/evaluate.py \
+    --filepath outputs/translations/ctx/scat-mbart50-1toM-scat.txt \
+    --model_id mbart50-1toM-scat \
+    --dataset scat \
+    --src_lang eng \
+    --tgt_lang fra \
+    --metrics bleu comet accuracy
+```
+
+## Create examples for running PECoRe steps
+
+```shell
+python scripts/format_examples.py \
+    --dataset scat \
+    --model_name context-mt/scat-marian-small-ctx4-cwd1-en-fr \
+    --src_lang eng \
+    --tgt_lang fra \
+    --model_id marian-small-scat \
+    --model_type marian-small \
+    --has_context
+
+python scripts/format_examples.py \
+    --dataset scat \
+    --model_name context-mt/scat-mbart50-1toM-target-ctx4-cwd0-en-fr \
+    --src_lang eng \
+    --tgt_lang fra \
+    --model_id mbart50-1toM-scat-target \
+    --model_type mbart50-1toM \
+    --has_context \
+    --has_target_context
+```
+
 ## Train a Context-Aware NMT Model
 
 Context-aware NMT models are trained using the `train.py` script. The script is a modification of the original

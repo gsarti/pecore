@@ -1,23 +1,45 @@
 import re
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
-from simalign import SentenceAligner
+from inseq import AttributionModel
+from inseq.utils.alignment_utils import align_tokenizations, compute_word_aligns
 
-aligner = SentenceAligner(model="bert", token_type="bpe", matching_methods="mai")
+from .enums import ModelTypeEnum
+from .model_utils import get_model_attribute, has_lang_tag
 
 
-def tokenize(text: str, is_tagged: bool = False):
+def tokenize_words(text: str, is_tagged: bool = False) -> List[str]:
+    """Tokenizes a string of words splitting on word boundaries and spaces, optionally with tags."""
     pattern_nonspace = r"(<p>|</p>|<hon>|<hoff>|\S+)" if is_tagged else r"(\S+)"
     pattern_word = r"(<p>|</p>|<hon>|<hoff>|\w+)" if is_tagged else r"(\w+)"
     return [x for nonspace in re.split(pattern_nonspace, text) for x in re.split(pattern_word, nonspace) if x.strip()]
 
 
-def tokenize_model(text: str, model):
+def tokenize_subwords(
+    text: str,
+    model: AttributionModel,
+    special_characters: List[str] = ["▁"],
+    special_tokens: List[str] = ["<pad>", "</s>"],
+    model_type: Optional[ModelTypeEnum] = None,
+) -> List[str]:
+    """Tokenizes a string of words into subwords using the given model's tokenizer."""
     out = model.encode(text, as_targets=True)
-    return [x.replace("▁", "") for x in out.input_tokens[0] if x not in ["<pad>", "</s>", "fr_XX"]]
+    tokens = out.input_tokens[0]
+    for char in special_characters:
+        tokens = [t.strip(char) for t in tokens]
+    if has_lang_tag(model):
+        if model_type is None:
+            raise ValueError("Model type must be specified if the model has a language tag.")
+        lang_tags = get_model_attribute(model_type, "lang_map").values()
+        special_tokens += list(lang_tags)
+    return [t for t in tokens if t not in special_tokens]
 
 
-def get_aligned_gender_annotations(ref_text, contrast_ref_text, mt_text) -> List[Tuple[str, str]]:
+def get_aligned_gender_annotations(
+    ref_text: str,
+    contrast_ref_text: str,
+    mt_text: str,
+) -> List[int]:
     """Returns a list of 0s and 1s, where 0 means that the word is not in the MT output and 1 means that it is."""
     ref_tok = re.findall(r"\w+\b", ref_text)
     contrast_ref_tok = re.findall(r"\w+\b", contrast_ref_text)
@@ -35,9 +57,23 @@ def get_aligned_gender_annotations(ref_text, contrast_ref_text, mt_text) -> List
     return out
 
 
-def get_tokens_with_cue_target_tags(txt_tag: str, txt_clean: str):
-    untagged_toks = tokenize(txt_clean)
-    tagged_toks = tokenize(txt_tag, is_tagged=True)
+def get_tokens_with_cue_target_tags(
+    txt_tag: str, txt_clean: Optional[str] = None, tags: List[str] = ["<p>", "<hon>", "</p>", "<hoff>"]
+) -> Tuple[List[str], List[int], List[int]]:
+    """Given a tagged and untagged version of the same text, returns a tuple containing:
+
+    - The word-level tokens of the untagged text
+    - A list of 0s and 1s, where 1 means that the respective i-th word is a cue word and 0 means that it is not
+    - A list of 0s and 1s, where 1 means that the respective i-th word is a target word and 0 means that it is not
+    """
+    if txt_clean is None:
+        for tag in tags:
+            if txt_clean is None:
+                txt_clean = txt_tag.replace(tag, "")
+            else:
+                txt_clean = txt_clean.replace(tag, "")
+    untagged_toks = tokenize_words(txt_clean)
+    tagged_toks = tokenize_words(txt_tag, is_tagged=True)
     tag_idx, untag_idx = 0, 0
     cue_tags = [0 for _ in range(len(untagged_toks))]
     target_tags = [0 for _ in range(len(untagged_toks))]
@@ -69,43 +105,7 @@ def get_tokens_with_cue_target_tags(txt_tag: str, txt_clean: str):
     return untagged_toks, cue_tags, target_tags
 
 
-def get_subword_alignments(src: str, tgt: str) -> List[Tuple[int, int]]:
-    """Aligns tokens of two whitespace-tokenized strings having the same contents,
-    but differing in tokenization.
-    The output is a sequence in the format "0-0 1-1 2-3 3-2 ..." corresponding to indices of
-    aligned tokens between src and tgt
-    """
-    assert "".join(src.split(" ")) == "".join(
-        tgt.split(" ")
-    ), f"SRC: {''.join(src.split())}\nTGT: {''.join(tgt.split())}\n"
-    out = []
-    src_idx = 0
-    tgt_idx = 0
-    # Splitting on single space ensures that "_" tokens are not lost and alignments are preserved.
-    src_tok = src.strip().split(" ")
-    tgt_tok = tgt.strip().split(" ")
-    while src_idx < len(src_tok):
-        curr_src_tok = src_tok[src_idx]
-        curr_tgt_tok = tgt_tok[tgt_idx]
-        if curr_src_tok == curr_tgt_tok:
-            out.append(f"{src_idx}-{tgt_idx}")
-            src_idx += 1
-            tgt_idx += 1
-        elif curr_src_tok in curr_tgt_tok:
-            out.append(f"{src_idx}-{tgt_idx}")
-            tgt_tok[tgt_idx] = tgt_tok[tgt_idx].replace(curr_src_tok, "", 1)
-            src_idx += 1
-        elif curr_tgt_tok in curr_src_tok:
-            out.append(f"{src_idx}-{tgt_idx}")
-            src_tok[src_idx] = src_tok[src_idx].replace(curr_tgt_tok, "", 1)
-            tgt_idx += 1
-        else:
-            raise ValueError(f"ERR: {curr_src_tok} =!= {curr_tgt_tok}")
-    out = " ".join(out)
-    return [tuple(int(x) for x in pair.split("-")) for pair in out.split()]
-
-
-def propagate_tags(tok_tgt, tags, alignments):
+def propagate_tags(tok_tgt: List[str], tags: List[int], alignments: List[Tuple[int, int]]) -> List[int]:
     model_tok_cue_tags = [0 for _ in range(len(tok_tgt))]
     for tok_idx, word_idx in alignments:
         if tags[word_idx] == 1:
@@ -113,45 +113,35 @@ def propagate_tags(tok_tgt, tags, alignments):
     return model_tok_cue_tags
 
 
-def get_model_cue_target_tags(tagged, untagged, model, ex=None, has_lang_tag=False):
-    if ex is None:
-        model_tokenized = tokenize_model(untagged, model)
-        untagged_toks, cue_tags, target_tags = get_tokens_with_cue_target_tags(tagged, untagged)
-        try:
-            alignments = get_subword_alignments(" ".join(model_tokenized), " ".join(untagged_toks))
-        except AssertionError as e:
-            raise ValueError(model_tokenized, untagged_toks) from e
-        cue_tags = propagate_tags(model_tokenized, cue_tags, alignments)
-        target_tags = propagate_tags(model_tokenized, target_tags, alignments)
-        return cue_tags, target_tags
-    else:
-        word_tok_ctx_gen = tokenize(ex["fr"])
-        sub_tok_ctx_gen = tokenize_model(ex["fr"], model)
-        # Get cue and target tags on the gold word-tokenized text
-        tok_gold_ref, gold_word_cue_tags, gold_word_target_tags = get_tokens_with_cue_target_tags(
-            ex["orig_fr_with_tags"], ex["tgt_fr"]
-        )
+def get_model_cue_target_tags(
+    tagged: str,
+    untagged: str,
+    model: AttributionModel,
+    is_generated_untagged: bool = True,
+    model_type: Optional[ModelTypeEnum] = None,
+) -> Tuple[List[int], List[int]]:
+    subword_tokenized = tokenize_subwords(untagged, model, model_type=model_type)
+    # Get cue and target tags on the gold word-tokenized text
+    word_tokenized, word_cue_tags, word_target_tags = get_tokens_with_cue_target_tags(
+        tagged, None if is_generated_untagged else untagged
+    )
+    if is_generated_untagged:
+        gen_word_tokenized = tokenize_words(untagged)
         # Align the word-tokenized model generation to the word-tokenized gold text
-        ctx_gen_to_gold_ref_alignments = aligner.get_word_aligns(word_tok_ctx_gen, tok_gold_ref)["itermax"]
+        gen_to_gold_word_alignments = compute_word_aligns(gen_word_tokenized, word_tokenized).alignments
         # Tags on the model-generated word level translation
-        ctx_gen_word_cue_tags = propagate_tags(word_tok_ctx_gen, gold_word_cue_tags, ctx_gen_to_gold_ref_alignments)
-        ctx_gen_word_target_tags = propagate_tags(
-            word_tok_ctx_gen, gold_word_target_tags, ctx_gen_to_gold_ref_alignments
-        )
-        # Align the subword- and word-tokenized model generations
-        try:
-            sub_to_word_ctx_gen_alignments = get_subword_alignments(
-                " ".join(sub_tok_ctx_gen), " ".join(word_tok_ctx_gen)
-            )
-        except AssertionError as e:
-            raise ValueError(sub_tok_ctx_gen, word_tok_ctx_gen) from e
-        # Propagate word-level tags on model generation to subword level.
-        cue_tags = propagate_tags(sub_tok_ctx_gen, ctx_gen_word_cue_tags, sub_to_word_ctx_gen_alignments)
-        target_tags = propagate_tags(sub_tok_ctx_gen, ctx_gen_word_target_tags, sub_to_word_ctx_gen_alignments)
+        word_cue_tags = propagate_tags(gen_word_tokenized, word_cue_tags, gen_to_gold_word_alignments)
+        word_target_tags = propagate_tags(gen_word_tokenized, word_target_tags, gen_to_gold_word_alignments)
+        word_tokenized = gen_word_tokenized
+    # Align the subword- and word-tokenized sequences
+    alignments = align_tokenizations(subword_tokenized, word_tokenized).alignments
+    # Propagate word-level tags on model generation to subword level.
+    subword_cue_tags = propagate_tags(subword_tokenized, word_cue_tags, alignments)
+    subword_target_tags = propagate_tags(subword_tokenized, word_target_tags, alignments)
     # Add </s> token tag
-    cue_tags += [0]
-    target_tags += [0]
-    if has_lang_tag:
-        cue_tags = [0] + cue_tags
-        target_tags = [0] + target_tags
-    return cue_tags, target_tags
+    subword_cue_tags += [0]
+    subword_target_tags += [0]
+    if has_lang_tag(model):
+        subword_cue_tags = [0] + subword_cue_tags
+        subword_target_tags = [0] + subword_target_tags
+    return subword_cue_tags, subword_target_tags

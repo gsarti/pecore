@@ -11,4 +11,9 @@
     "ruff.args": [
         "--config=/home/gsarti/projects/pecore/pyproject.toml"
     ],
+    "python.testing.pytestArgs": [
+        "tests"
+    ],
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true,
 }

@@ -22,7 +22,6 @@ dependencies = [
     "inseq",
     "tqdm",
     "scikit-learn",
-    "simalign",
     "stanza",
     "strenum",
     "sentencepiece",
