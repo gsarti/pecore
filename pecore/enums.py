@@ -17,3 +17,10 @@ class MetricEnum(StrEnum):
     BLEU = "bleu"
     COMET = "comet"
     ACCURACY = "accuracy"
+
+
+class AttributeFnEnum(StrEnum):
+    BASE = "base"
+    TOP_P = "top_p"
+    LOGIT_LENS = "logit_lens"
+    INPUT_CONTRIBUTIONS = "input_contributions"

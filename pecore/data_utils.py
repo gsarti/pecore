@@ -1,4 +1,5 @@
 from collections import Counter, OrderedDict
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 from datasets import Dataset, load_dataset
@@ -97,3 +98,19 @@ def get_preprocess_dataset_fn(context_size: int, dataset: str = "flores", src_la
         return preprocess_dataset_seq
     elif dataset in [DatasetEnum.SCAT]:
         return preprocess_dataset_merged
+
+
+@dataclass
+class DatasetExample:
+    source_full: str
+    source_current: str
+    source_context: str
+    source_current_tagged: str
+    gold_target_full: str
+    gold_target_current: str
+    gold_target_context: str
+    gold_target_current_tagged: str
+    generated_target_full: str
+    generated_target_current: str
+    generated_target_context: Optional[str] = None
+    gold_target_current_contrast: Optional[str] = None

@@ -86,6 +86,12 @@ def parse_args() -> argparse.Namespace:
         help="Column name identifying tagged sentences in the dataset.",
     )
     parser.add_argument(
+        "--contrast_column",
+        type=str,
+        default="contrast_{lang}",
+        help="Column name identifying contrast sentences in the dataset.",
+    )
+    parser.add_argument(
         "--use_gold_target",
         action="store_true",
         help="Whether to use gold targets instead of generating.",
@@ -102,6 +108,11 @@ def parse_args() -> argparse.Namespace:
             "Whether the model generate context alongside current targets (<brk> tags to separate context and current"
             " sentences)"
         ),
+    )
+    parser.add_argument(
+        "--has_contrast",
+        action="store_true",
+        help="Whether the dataset has contrast sentences.",
     )
     parser.add_argument(
         "--special_tokens",
@@ -124,6 +135,7 @@ def format_examples():
     tgt_current_column = args.current_column
     src_tagged_column = args.tagged_column
     tgt_tagged_column = args.tagged_column
+    contrast_column = args.contrast_column
     if "{lang}" in args.context_column:
         src_context_column = src_context_column.format(lang=args.src_lang[:2])
         tgt_context_column = tgt_context_column.format(lang=args.tgt_lang[:2])
@@ -142,6 +154,8 @@ def format_examples():
     else:
         src_tagged_column = "src_" + src_tagged_column
         tgt_tagged_column = "tgt_" + tgt_tagged_column
+    if "{lang}" in args.contrast_column:
+        contrast_column = contrast_column.format(lang=args.tgt_lang[:2])
     generate_kwargs = {}
     if has_lang_tag(model):
         model.tokenizer.src_lang = get_lang_from_model_type(args.model_type, args.src_lang)
@@ -162,12 +176,14 @@ def format_examples():
             "source_full": source,
             "source_current": ex[src_current_column],
             "source_context": ex[src_context_column],
-            "source_tagged": ex[src_tagged_column],
+            "source_current_tagged": ex[src_tagged_column],
             "gold_target_full": target,
             "gold_target_current": ex[tgt_current_column],
             "gold_target_context": ex[tgt_context_column],
-            "gold_target_tagged": ex[tgt_tagged_column],
+            "gold_target_current_tagged": ex[tgt_tagged_column],
         }
+        if args.has_contrast:
+            curr_example["gold_target_current_contrast"] = ex[contrast_column]
         if args.use_gold_target:
             examples.append(curr_example)
         else:
