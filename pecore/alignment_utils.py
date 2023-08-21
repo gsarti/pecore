@@ -121,6 +121,8 @@ def get_model_cue_target_tags(
     is_generated_untagged: bool = True,
     model_type: Optional[ModelTypeEnum] = None,
     is_target: bool = True,
+    is_current: bool = True,
+    add_lang_tag: bool = True,
 ) -> Tuple[List[int], List[int]]:
     subword_tokenized = tokenize_subwords(untagged, model, model_type=model_type, is_target=is_target)
     # Get cue and target tags on the gold word-tokenized text
@@ -141,10 +143,10 @@ def get_model_cue_target_tags(
     subword_cue_tags = propagate_tags(subword_tokenized, word_cue_tags, alignments)
     subword_target_tags = propagate_tags(subword_tokenized, word_target_tags, alignments)
     # Add </s> token tag
-    if is_target:
+    if is_target and is_current:
         subword_cue_tags += [0]
         subword_target_tags += [0]
-    if has_lang_tag(model):
+    if has_lang_tag(model) and add_lang_tag:
         subword_cue_tags = [0] + subword_cue_tags
         subword_target_tags = [0] + subword_target_tags
     return subword_cue_tags, subword_target_tags

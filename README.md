@@ -2,7 +2,7 @@
 
 ### Train a Context-Aware NMT Model
 
-Context-aware NMT models are trained using the `train.py` script. The script is a modification of the original
+Context-aware NMT models are trained using the `train_context_aware_mt_model.py` script. The script is a modification of the original
 [`run_translation_no_trainer.py`](https://github.com/huggingface/transformers/blob/main/examples/pytorch/translation/run_translation_no_trainer.py). The script adds the following fields for contextual model training:
 
 - `context_size`: The number of context sentences to use for training. The default value is 0 (sentence-level training).
@@ -20,7 +20,7 @@ Context-aware NMT models are trained using the `train.py` script. The script is 
 Here is an example of fine-tuning an mBART 1-to-50 model on the context-augmented IWSLT17 dataset with up to 4 context sentences and a 10% context word dropout:
 
 ```shell
-accelerate launch scripts/train.py \
+accelerate launch scripts/train_context_aware_mt_model.py \
     --model_name_or_path facebook/mbart-large-50-one-to-many-mmt \
     --source_lang en_XX \
     --target_lang fr_XX \
@@ -46,7 +46,7 @@ accelerate launch scripts/train.py \
 Here is an example of continuing the fine-tuning of a context-aware En->Fr OpusMT model on the training portion of SCAT with up to 4 context sentences and a 10% context word dropout:
 
 ```shell
-accelerate launch scripts/train.py \
+accelerate launch scripts/train_context_aware_mt_model.py \
     --model_name_or_path context-mt/iwslt17-marian-big-ctx4-cwd1-en-fr \
     --dataset_name inseq/scat \
     --dataset_config_name sentences \
@@ -84,7 +84,7 @@ python scripts/translate.py \
 ### Evaluate a Context-Aware NMT Model
 
 ```shell
-python scripts/evaluate.py \
+python scripts/evaluate_mt_outputs.py \
     --filepath outputs/translations/ctx/scat-mbart50-1toM-scat.txt \
     --model_id mbart50-1toM-scat \
     --dataset scat \
@@ -96,7 +96,7 @@ python scripts/evaluate.py \
 ### Create examples for running PECoRe steps
 
 ```shell
-python scripts/format_examples.py \
+python scripts/generate_examples.py \
     --dataset scat \
     --model_name context-mt/scat-marian-small-ctx4-cwd1-en-fr \
     --src_lang eng \
@@ -106,7 +106,7 @@ python scripts/format_examples.py \
     --has_context \
     --has_contrast
 
-python scripts/format_examples.py \
+python scripts/generate_examples.py \
     --dataset scat \
     --model_name context-mt/scat-mbart50-1toM-target-ctx4-cwd0-en-fr \
     --src_lang eng \
@@ -159,4 +159,12 @@ python scripts/tag_cci_metrics.py \
     --examples_path outputs/processed_examples/scat-marian-small-scat.tsv \
     --model_name context-mt/scat-marian-small-ctx4-cwd1-en-fr \
     --model_type marian-small
+
+python scripts/tag_cci_metrics.py \
+    --examples_path outputs/processed_examples/scat-mbart50-1toM-scat-target.tsv \
+    --model_name context-mt/scat-mbart50-1toM-target-ctx4-cwd0-en-fr \
+    --model_type mbart50-1toM
 ```
+
+### Evaluate PECoRe Metrics
+

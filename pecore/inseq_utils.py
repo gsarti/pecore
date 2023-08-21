@@ -340,7 +340,6 @@ def get_imputation_scores_df(
                     show_progress=False,
                     method=attribution_method,
                 )
-                out = out.aggregate(normalize=False)
             else:
                 out = attribute_contrast(
                     example=example,
@@ -352,15 +351,18 @@ def get_imputation_scores_df(
                     attributed_fn=attributed_fn if attributed_fn != "base" else None,
                     attribution_method=attribution_method,
                 )
-                out = out.aggregate("sum", normalize=False)
             if out is None:
                 return None
+            if attributed_fn == "base":
+                out = out.aggregate(normalize=False)
+            else:
+                out = out.aggregate("sum", normalize=False)
             use_lang_tag = has_lang_tag(model)
             source_sep_idx = [t.token for t in out[0].source].index(context_separator)
             lang_tag_offset = 1 if use_lang_tag else 0
             if has_target_context:
                 special_tok = context_separator
-                if use_lang_tag:
+                if use_lang_tag and attributed_fn != "base":
                     special_tok = f"{model.tokenizer.tgt_lang} → {context_separator}"
                 target_sep_idx = [t.token for t in out[0].target].index(special_tok)
             # Extract context attribution for every context-sensitive token

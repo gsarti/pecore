@@ -221,7 +221,7 @@ def tag_csi_metrics():
             scores_df = curr_full_scores_df
         else:
             scores_df = pd.concat([scores_df, curr_full_scores_df], ignore_index=True)
-        scores_df.to_csv(out_path, index=False, sep="\t")
+        scores_df.round(4).to_csv(out_path, index=False, sep="\t")
 
 
 if __name__ == "__main__":

@@ -119,14 +119,14 @@ def tag_cci_metrics():
     dataset_name = Path(args.examples_path).stem.split("-")[0]
     model_id = Path(args.examples_path).stem.split(".")[0][len(dataset_name) + 1 :]
     out_path = Path(args.output_dir) / f"{dataset_name}-{model_id}-cci.tsv"
+    scores_df = None
     if args.start_idx > 0:
-        pd.read_csv(out_path, sep="\t")
+        scores_df = pd.read_csv(out_path, sep="\t")
     if args.max_idx is None:
         args.max_idx = len(examples)
     if has_lang_tag(model):
         model.tokenizer.src_lang = get_lang_from_model_type(args.model_type, args.src_lang)
         model.tokenizer.tgt_lang = get_lang_from_model_type(args.model_type, args.tgt_lang)
-    scores_df = None
     for idx, ex in tqdm(enumerate(examples), total=args.max_idx):
         if idx < args.start_idx:
             continue
@@ -143,6 +143,9 @@ def tag_cci_metrics():
             attributed_fns=args.attributed_fns,
             # TODO: Provide custom target tags to test without gold tags.
         )
+        if curr_df is None:
+            logger.warning("Skipping example %d, no imputation scores available.", idx)
+            continue
         if not args.skip_token_tags:
             target_context = ex.gold_target_context if args.use_gold_target_context else ex.generated_target_context
             has_target_context = target_context is not None and pd.notnull(target_context)
@@ -159,6 +162,8 @@ def tag_cci_metrics():
                     is_generated_untagged=False,
                     model_type=args.model_type,
                     is_target=False,
+                    is_current=False,
+                    add_lang_tag=False,
                 )
                 if has_target_context:
                     target_cue_tags, _ = get_model_cue_target_tags(
@@ -167,6 +172,8 @@ def tag_cci_metrics():
                         model,
                         is_generated_untagged=not args.use_gold_target_context,
                         model_type=args.model_type,
+                        is_current=False,
+                        add_lang_tag=False,
                     )
                     cue_tags = cue_tags + target_cue_tags
                 curr_df["is_supporting_context"] = cue_tags
@@ -196,7 +203,7 @@ def tag_cci_metrics():
             scores_df = curr_df
         else:
             scores_df = pd.concat([scores_df, curr_df], ignore_index=True)
-        scores_df.to_csv(out_path, index=False, sep="\t")
+        scores_df.round(4).to_csv(out_path, index=False, sep="\t")
 
 
 if __name__ == "__main__":
