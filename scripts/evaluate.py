@@ -2,7 +2,7 @@ import argparse
 import logging
 
 from comet import download_model, load_from_checkpoint
-from pecore.alignment_utils import get_aligned_gender_annotations
+from pecore.alignment_utils import get_match_from_contrastive_pair
 from pecore.data_utils import get_src_ref_sentences, load_mt_dataset
 from pecore.enums import DatasetEnum, MetricEnum
 from sacrebleu.metrics import BLEU
@@ -103,7 +103,7 @@ def evaluate():
             for curr_ref, curr_ref_contrast, curr_mt in tqdm(
                 zip(refs, ref_contrast, sys), desc="Aligned accuracy", total=len(refs)
             ):
-                matches = get_aligned_gender_annotations(curr_ref, curr_ref_contrast, curr_mt)
+                matches = get_match_from_contrastive_pair(curr_ref, curr_ref_contrast, curr_mt)
                 tot_keywords += len(matches)
                 tot_correct += len([x for x in matches if x == 1])
             print(args.dataset, args.model_id, "Aligned accuracy", round(tot_correct / tot_keywords, 4))

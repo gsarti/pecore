@@ -4,7 +4,7 @@ from pathlib import Path
 
 import inseq
 import pandas as pd
-from pecore.alignment_utils import get_aligned_gender_annotations, get_model_cue_target_tags
+from pecore.alignment_utils import get_match_from_contrastive_pair, get_model_cue_target_tags
 from pecore.data_utils import DatasetExample
 from pecore.enums import AttributeFnEnum, ModelTypeEnum
 from pecore.inseq_utils import get_attribute_fn
@@ -108,11 +108,37 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
+def check_examples(args: argparse.Namespace, ex: DatasetExample):
+    if args.use_gold_target_current and ex.gold_target_current is None:
+        raise ValueError(
+            "Cannot use gold target current sentence, gold_target_current is not available in the examples.\n"
+            "Please provide examples with gold targets or remove --use_gold_target_current."
+        )
+    if not args.use_gold_target_current and ex.generated_target_current is None:
+        raise ValueError(
+            "Cannot use model generated target current sentence, generated_target_current is not available in the"
+            " examples.\nPlease provide examples with generated targets or set --use_gold_target_current."
+        )
+    if args.use_gold_target_context and ex.gold_target_context is None:
+        raise ValueError(
+            "Cannot use gold target context, gold_target_context is not available in the examples.\n"
+            "Please provide examples with gold targets or remove --use_gold_target_context.\n"
+            "NOTE: Only models generating context alongside current targets can use target context."
+        )
+    if not args.use_gold_target_context and ex.generated_target_context is None:
+        raise ValueError(
+            "Cannot use model generated target context, generated_target_context is not available in the examples.\n"
+            "Please provide examples with generated targets or set --use_gold_target_context.\n"
+            "NOTE: Only models generating context alongside current targets can use target context."
+        )
+
+
 def tag_csi_metrics():
     args = parse_args()
     model = inseq.load_model(args.model_name, "dummy")
     examples = pd.read_csv(args.examples_path, sep="\t").to_dict("records")
     examples = [DatasetExample(**ex) for ex in examples]
+    check_examples(args, examples[0])
     dataset_name = Path(args.examples_path).stem.split("-")[0]
     model_id = Path(args.examples_path).stem.split(".")[0][len(dataset_name) + 1 :]
     scores_df = None
@@ -153,6 +179,11 @@ def tag_csi_metrics():
 
         # Add columns to mark tagged tokens.
         if not args.skip_token_tags:
+            if ex.gold_target_current_tagged is None:
+                raise ValueError(
+                    f"Example {idx} does not have gold_target_current_tagged, cannot add token tags."
+                    "Please provide a tagged version of the example or set --skip_token_tags."
+                )
             try:
                 cue_tags, target_tags = get_model_cue_target_tags(
                     ex.gold_target_current_tagged,
@@ -163,17 +194,26 @@ def tag_csi_metrics():
                 )
                 curr_full_scores_df["is_supporting_context"] = cue_tags
                 curr_full_scores_df["is_context_sensitive"] = target_tags
-            except Exception as ex:
-                print(f"Excluding example {idx} due to error {ex}")
+            except Exception as e:
+                print(f"Excluding example {idx} due to error {e}")
                 continue
 
         # Add an is_example_correct column to the scores file, marking examples where the model correctly disambiguates the
         # gender in the target sentence. To analyze data folds and not as feature, since it is not available in test.
         if not args.skip_example_status:
-            correct_matches = get_aligned_gender_annotations(
+            if (
+                ex.gold_target_current is None
+                or ex.generated_target_current is None
+                or ex.gold_target_current_contrast is None
+            ):
+                raise ValueError(
+                    "A generated target and a minimal pair of original and contrastive gold targets are required to"
+                    " compute the example status.\n Provide examples containing these or set --skip_example_status."
+                )
+            correct_matches = get_match_from_contrastive_pair(
                 ref_text=ex.gold_target_current,
                 contrast_ref_text=ex.gold_target_current_contrast,
-                mt_text=ex.generated_target_current,
+                pred_text=ex.generated_target_current,
             )
             is_correct = 1 if sum(correct_matches) > 0 else 0
             curr_full_scores_df["is_example_correct"] = is_correct

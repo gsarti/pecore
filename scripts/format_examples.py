@@ -80,10 +80,16 @@ def parse_args() -> argparse.Namespace:
         help="Column name identifying current sentences in the dataset.",
     )
     parser.add_argument(
-        "--tagged_column",
+        "--current_tagged_column",
         type=str,
         default="{lang}_with_tags",
-        help="Column name identifying tagged sentences in the dataset.",
+        help="Column name identifying tagged currentsentences in the dataset.",
+    )
+    parser.add_argument(
+        "--context_tagged_column",
+        type=str,
+        default="context_{lang}_with_tags",
+        help="Column name identifying tagged context sentences in the dataset.",
     )
     parser.add_argument(
         "--contrast_column",
@@ -133,8 +139,10 @@ def format_examples():
     tgt_context_column = args.context_column
     src_current_column = args.current_column
     tgt_current_column = args.current_column
-    src_tagged_column = args.tagged_column
-    tgt_tagged_column = args.tagged_column
+    src_context_tagged_column = args.context_tagged_column
+    tgt_context_tagged_column = args.context_tagged_column
+    src_current_tagged_column = args.current_tagged_column
+    tgt_current_tagged_column = args.current_tagged_column
     contrast_column = args.contrast_column
     if "{lang}" in args.context_column:
         src_context_column = src_context_column.format(lang=args.src_lang[:2])
@@ -148,12 +156,18 @@ def format_examples():
     else:
         src_current_column = "src_" + src_current_column
         tgt_current_column = "tgt_" + tgt_current_column
-    if "{lang}" in args.tagged_column:
-        src_tagged_column = src_tagged_column.format(lang=args.src_lang[:2])
-        tgt_tagged_column = tgt_tagged_column.format(lang=args.tgt_lang[:2])
+    if "{lang}" in args.context_tagged_column:
+        src_context_tagged_column = src_context_tagged_column.format(lang=args.src_lang[:2])
+        tgt_context_tagged_column = tgt_context_tagged_column.format(lang=args.tgt_lang[:2])
     else:
-        src_tagged_column = "src_" + src_tagged_column
-        tgt_tagged_column = "tgt_" + tgt_tagged_column
+        src_context_tagged_column = "src_" + src_context_tagged_column
+        tgt_context_tagged_column = "tgt_" + tgt_context_tagged_column
+    if "{lang}" in args.current_tagged_column:
+        src_current_tagged_column = src_current_tagged_column.format(lang=args.src_lang[:2])
+        tgt_current_tagged_column = tgt_current_tagged_column.format(lang=args.tgt_lang[:2])
+    else:
+        src_current_tagged_column = "src_" + src_current_tagged_column
+        tgt_current_tagged_column = "tgt_" + tgt_current_tagged_column
     if "{lang}" in args.contrast_column:
         contrast_column = contrast_column.format(lang=args.tgt_lang[:2])
     generate_kwargs = {}
@@ -176,11 +190,13 @@ def format_examples():
             "source_full": source,
             "source_current": ex[src_current_column],
             "source_context": ex[src_context_column],
-            "source_current_tagged": ex[src_tagged_column],
+            "source_current_tagged": ex[src_current_tagged_column],
+            "source_context_tagged": ex[src_context_tagged_column],
             "gold_target_full": target,
             "gold_target_current": ex[tgt_current_column],
             "gold_target_context": ex[tgt_context_column],
-            "gold_target_current_tagged": ex[tgt_tagged_column],
+            "gold_target_current_tagged": ex[tgt_current_tagged_column],
+            "gold_target_context_tagged": ex[tgt_context_tagged_column],
         }
         if args.has_contrast:
             curr_example["gold_target_current_contrast"] = ex[contrast_column]

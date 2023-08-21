@@ -21,9 +21,10 @@ def tokenize_subwords(
     special_characters: List[str] = ["▁"],
     special_tokens: List[str] = ["<pad>", "</s>"],
     model_type: Optional[ModelTypeEnum] = None,
+    is_target: bool = True,
 ) -> List[str]:
     """Tokenizes a string of words into subwords using the given model's tokenizer."""
-    out = model.encode(text, as_targets=True)
+    out = model.encode(text, as_targets=is_target)
     tokens = out.input_tokens[0]
     for char in special_characters:
         tokens = [t.strip(char) for t in tokens]
@@ -35,25 +36,25 @@ def tokenize_subwords(
     return [t for t in tokens if t not in special_tokens]
 
 
-def get_aligned_gender_annotations(
+def get_match_from_contrastive_pair(
     ref_text: str,
     contrast_ref_text: str,
-    mt_text: str,
+    pred_text: str,
 ) -> List[int]:
     """Returns a list of 0s and 1s, where 0 means that the word is not in the MT output and 1 means that it is."""
     ref_tok = re.findall(r"\w+\b", ref_text)
     contrast_ref_tok = re.findall(r"\w+\b", contrast_ref_text)
-    if not isinstance(mt_text, str):
+    if not isinstance(pred_text, str):
         return [0]
-    mt_tok = [x.lower() for x in re.findall(r"\w+\b", mt_text)]
-    keywords = [ref for ref, con in zip(ref_tok, contrast_ref_tok) if ref != con]
+    pred_tok = [x.lower() for x in re.findall(r"\w+\b", pred_text)]
+    keywords = [ref.lower() for ref, con in zip(ref_tok, contrast_ref_tok) if ref != con]
     out = []
     for kw in keywords:
-        if kw.lower() not in mt_tok:
+        if kw not in pred_tok:
             out += [0]
         else:
             out += [1]
-            mt_tok.remove(kw.lower())
+            pred_tok.remove(kw)
     return out
 
 
@@ -119,8 +120,9 @@ def get_model_cue_target_tags(
     model: AttributionModel,
     is_generated_untagged: bool = True,
     model_type: Optional[ModelTypeEnum] = None,
+    is_target: bool = True,
 ) -> Tuple[List[int], List[int]]:
-    subword_tokenized = tokenize_subwords(untagged, model, model_type=model_type)
+    subword_tokenized = tokenize_subwords(untagged, model, model_type=model_type, is_target=is_target)
     # Get cue and target tags on the gold word-tokenized text
     word_tokenized, word_cue_tags, word_target_tags = get_tokens_with_cue_target_tags(
         tagged, None if is_generated_untagged else untagged
@@ -139,8 +141,9 @@ def get_model_cue_target_tags(
     subword_cue_tags = propagate_tags(subword_tokenized, word_cue_tags, alignments)
     subword_target_tags = propagate_tags(subword_tokenized, word_target_tags, alignments)
     # Add </s> token tag
-    subword_cue_tags += [0]
-    subword_target_tags += [0]
+    if is_target:
+        subword_cue_tags += [0]
+        subword_target_tags += [0]
     if has_lang_tag(model):
         subword_cue_tags = [0] + subword_cue_tags
         subword_target_tags = [0] + subword_target_tags

@@ -2,7 +2,7 @@ from collections import Counter, OrderedDict
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-from datasets import Dataset, load_dataset
+from datasets import Dataset, VerificationMode, load_dataset
 
 from .enums import DatasetEnum
 
@@ -18,7 +18,7 @@ def load_mt_dataset(dataset_name: str, src_lang: Optional[str] = None, tgt_lang:
     elif dataset_name == DatasetEnum.IWSLT:
         return load_dataset("gsarti/iwslt2017_context", f"iwslt2017-{src_lang[:2]}-{tgt_lang[:2]}", split="test")
     elif dataset_name == DatasetEnum.SCAT:
-        return load_dataset("inseq/scat", split="test")
+        return load_dataset("inseq/scat", split="test", verification_mode=VerificationMode.NO_CHECKS)
     else:
         raise ValueError(f"Not available: {dataset_name}")
 
@@ -105,12 +105,15 @@ class DatasetExample:
     source_full: str
     source_current: str
     source_context: str
-    source_current_tagged: str
-    gold_target_full: str
-    gold_target_current: str
-    gold_target_context: str
-    gold_target_current_tagged: str
-    generated_target_full: str
-    generated_target_current: str
-    generated_target_context: Optional[str] = None
+    source_current_tagged: Optional[str] = None
+    source_context_tagged: Optional[str] = None
+    gold_target_full: Optional[str] = None
+    gold_target_current: Optional[str] = None
+    gold_target_context: Optional[str] = None
+    gold_target_current_tagged: Optional[str] = None
+    gold_target_current_tagged: Optional[str] = None
+    gold_target_context_tagged: Optional[str] = None
     gold_target_current_contrast: Optional[str] = None
+    generated_target_full: Optional[str] = None
+    generated_target_current: Optional[str] = None
+    generated_target_context: Optional[str] = None
