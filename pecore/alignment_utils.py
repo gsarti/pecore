@@ -1,8 +1,9 @@
 import re
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 from inseq import AttributionModel
 from inseq.utils.alignment_utils import align_tokenizations, compute_word_aligns
+from stanza import Pipeline
 
 from .enums import ModelTypeEnum
 from .model_utils import get_model_attribute, has_lang_tag
@@ -106,12 +107,13 @@ def get_tokens_with_cue_target_tags(
     return untagged_toks, cue_tags, target_tags
 
 
-def propagate_tags(tok_tgt: List[str], tags: List[int], alignments: List[Tuple[int, int]]) -> List[int]:
-    model_tok_cue_tags = [0 for _ in range(len(tok_tgt))]
-    for tok_idx, word_idx in alignments:
-        if tags[word_idx] == 1:
-            model_tok_cue_tags[tok_idx] = 1
-    return model_tok_cue_tags
+def propagate_tags(
+    tok_a: List[str], tok_b_tags: List[Any], a_to_b_alignments: List[Tuple[int, int]], default_val: Any = 0
+) -> List[int]:
+    tok_a_tags = [default_val for _ in range(len(tok_a))]
+    for tok_a_idx, tok_b_idx in a_to_b_alignments:
+        tok_a_tags[tok_a_idx] = tok_b_tags[tok_b_idx]
+    return tok_a_tags
 
 
 def get_model_cue_target_tags(
@@ -150,3 +152,33 @@ def get_model_cue_target_tags(
         subword_cue_tags = [0] + subword_cue_tags
         subword_target_tags = [0] + subword_target_tags
     return subword_cue_tags, subword_target_tags
+
+
+def get_model_lang_feats(
+    sent: str,
+    pipeline: Pipeline,
+    model: AttributionModel,
+    model_type: Optional[ModelTypeEnum] = None,
+    is_target: bool = True,
+    is_current: bool = True,
+    add_lang_tag: bool = True,
+) -> Tuple[List[int], List[int]]:
+    doc = pipeline(sent)
+    word_tokenized = [token.text for sent in doc.sentences for token in sent.tokens]
+    word_pos_tags = ["+".join(word.upos for word in token.words) for sent in doc.sentences for token in sent.tokens]
+    word_feats_tags = [
+        "+".join(word.feats if word.feats else "_" for word in token.words)
+        for sent in doc.sentences
+        for token in sent.tokens
+    ]
+    subword_tokenized = tokenize_subwords(sent, model, model_type=model_type, is_target=is_target)
+    alignments = align_tokenizations(subword_tokenized, word_tokenized).alignments
+    subword_pos_tags = propagate_tags(subword_tokenized, word_pos_tags, alignments, default_val="X")
+    subword_feats_tags = propagate_tags(subword_tokenized, word_feats_tags, alignments, default_val="_")
+    if is_target and is_current:
+        subword_pos_tags += ["EOS"]
+        subword_feats_tags += ["_"]
+    if has_lang_tag(model) and add_lang_tag:
+        subword_pos_tags = ["LANG"] + subword_pos_tags
+        subword_feats_tags = ["_"] + subword_feats_tags
+    return subword_pos_tags, subword_feats_tags

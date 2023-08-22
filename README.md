@@ -118,38 +118,39 @@ python scripts/generate_examples.py \
     --has_contrast
 ```
 
-### PECoRe Step 1: Context-sensitive Span Identification (CSI)
+### PECoRe Step 1: Context-sensitive Target Identification (CTI)
 
 ```shell
-python scripts/tag_csi_metrics.py \
+python scripts/tag_cti_metrics.py \
     --examples_path outputs/processed_examples/scat-marian-small-scat.tsv \
     --model_name context-mt/scat-marian-small-ctx4-cwd1-en-fr \
     --model_type marian-small
 
-python scripts/tag_csi_metrics.py \
+python scripts/tag_cti_metrics.py \
     --examples_path outputs/processed_examples/scat-marian-big-scat.tsv \
     --model_name context-mt/scat-marian-big-ctx4-cwd1-en-fr \
     --model_type marian-big
 
-python scripts/tag_csi_metrics.py \
+python scripts/tag_cti_metrics.py \
     --examples_path outputs/processed_examples/scat-mbart50-1toM-scat.tsv \
     --model_name context-mt/scat-mbart50-1toM-ctx4-cwd1-en-fr \
     --model_type mbart50-1toM
 
-python scripts/tag_csi_metrics.py \
+python scripts/tag_cti_metrics.py \
     --examples_path outputs/processed_examples/scat-marian-small-scat-target.tsv \
     --model_name context-mt/scat-marian-small-target-ctx4-cwd0-en-fr \
     --model_type marian-small
 
-python scripts/tag_csi_metrics.py \
+python scripts/tag_cti_metrics.py \
     --examples_path outputs/processed_examples/scat-marian-big-scat-target.tsv \
     --model_name context-mt/scat-marian-big-target-ctx4-cwd0-en-fr \
     --model_type marian-big
 
-python scripts/tag_csi_metrics.py \
+python scripts/tag_cti_metrics.py \
     --examples_path outputs/processed_examples/scat-mbart50-1toM-scat-target.tsv \
     --model_name context-mt/scat-mbart50-1toM-target-ctx4-cwd0-en-fr \
-    --model_type mbart50-1toM
+    --model_type mbart50-1toM \
+    --start_idx 212
 ```
 
 ### PECoRe Step 2: Contextual Cues Imputation (CCI)
@@ -168,3 +169,13 @@ python scripts/tag_cci_metrics.py \
 
 ### Evaluate PECoRe Metrics
 
+```shell
+python scripts/evaluate_tagged_metrics.py \
+    --scores_path outputs/scores/scat-marian-small-scat-cti.tsv \
+    --eval_mode cti
+
+python scripts/evaluate_tagged_metrics.py \
+    --scores_path outputs/scores/scat-marian-small-scat-cci.tsv \
+    --eval_mode cci \
+    --example_target_column is_supporting_context
+```

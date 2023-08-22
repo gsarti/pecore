@@ -1,4 +1,5 @@
 import logging
+from itertools import product
 from typing import Dict, List, Optional, Protocol, Tuple
 
 import inseq
@@ -18,6 +19,7 @@ inseq_aggr_logger = logging.getLogger("inseq.data.aggregator")
 inseq_aggr_logger.setLevel(logging.WARNING)
 inseq_align_logger = logging.getLogger("inseq.utils.alignment_utils")
 inseq_align_logger.setLevel(logging.ERROR)
+logger = logging.getLogger(__name__)
 
 
 def kl_div_per_layer_fn(
@@ -303,7 +305,9 @@ def get_imputation_scores_df(
     attributed_fns: List[str],
     context_separator: str = "<brk>",
     target_tags: Optional[List[bool]] = None,
-) -> pd.DataFrame:
+    include_per_unit_scores: bool = False,
+    units_names: List[str] = ["h", "l"],
+) -> Optional[pd.DataFrame]:
     target_context = example.gold_target_context if use_gold_target_context else example.generated_target_context
     has_target_context = target_context is not None and pd.notnull(target_context)
     target_current = example.gold_target_current if use_gold_target_current else example.generated_target_current
@@ -325,6 +329,8 @@ def get_imputation_scores_df(
             model_type=model_type,
         )
     target_tags_indices = [i for i, tag in enumerate(target_tags) if tag]
+    if not target_tags_indices:
+        logger.warning(f"No target tags found for example {curr_idx}.")
     out_df = None
     for attribution_method in attribution_methods:
         model.setup(attribution_method=attribution_method)
@@ -354,22 +360,25 @@ def get_imputation_scores_df(
             if out is None:
                 return None
             if attributed_fn == "base":
-                out = out.aggregate(normalize=False)
+                aggr_out = out.aggregate(normalize=False)
             else:
-                out = out.aggregate("sum", normalize=False)
+                aggr_out = out.aggregate("sum", normalize=False)
             use_lang_tag = has_lang_tag(model)
-            source_sep_idx = [t.token for t in out[0].source].index(context_separator)
+            source_sep_idx = [t.token for t in aggr_out[0].source].index(context_separator)
             lang_tag_offset = 1 if use_lang_tag else 0
             if has_target_context:
                 special_tok = context_separator
                 if use_lang_tag and attributed_fn != "base":
                     special_tok = f"{model.tokenizer.tgt_lang} → {context_separator}"
-                target_sep_idx = [t.token for t in out[0].target].index(special_tok)
+                target_sep_idx = [t.token for t in aggr_out[0].target].index(special_tok)
+                target_context_tokens = [t.token for t in aggr_out[0].target[lang_tag_offset:target_sep_idx]]
             # Extract context attribution for every context-sensitive token
             curr_method_out_df = None
+            source_context_tokens = [t.token for t in aggr_out[0].source[lang_tag_offset:source_sep_idx]]
             for cst_idx in target_tags_indices:
-                source_context_tokens = [t.token for t in out[0].source[lang_tag_offset:source_sep_idx]]
-                source_context_scores = out[0].source_attributions[lang_tag_offset:source_sep_idx, cst_idx].tolist()
+                source_context_scores = (
+                    aggr_out[0].source_attributions[lang_tag_offset:source_sep_idx, cst_idx].tolist()
+                )
                 curr_scores_df = pd.DataFrame(
                     {
                         "example_idx": curr_idx,
@@ -380,10 +389,22 @@ def get_imputation_scores_df(
                         f"{attribution_method}_{attributed_fn}": source_context_scores,
                     }
                 )
+                if include_per_unit_scores and attributed_fn == "base":
+                    unaggr_source_context_scores = out[0].source_attributions[
+                        lang_tag_offset:source_sep_idx, cst_idx, ...
+                    ]
+                    source_scores_size = list(unaggr_source_context_scores.size())
+                    unit_sizes = dict(zip(units_names, source_scores_size[::-1][: len(units_names)]))
+                    unit_combinations = product(*[range(unit_sizes[unit]) for unit in units_names])
+                    for unit_combination in unit_combinations:
+                        unit_combination = tuple(reversed(unit_combination))
+                        name_id = "_".join([f"{unit}{idx}" for unit, idx in zip(unit_combination, units_names)])
+                        curr_scores_df[f"{attribution_method}_{name_id}"] = unaggr_source_context_scores[
+                            (...,) + unit_combination
+                        ]
                 if has_target_context:
-                    target_context_tokens = [t.token for t in out[0].target[lang_tag_offset:target_sep_idx]]
                     target_context_scores = (
-                        out[0].target_attributions[lang_tag_offset:target_sep_idx, cst_idx].tolist()
+                        aggr_out[0].target_attributions[lang_tag_offset:target_sep_idx, cst_idx].tolist()
                     )
                     curr_scores_target_df = pd.DataFrame(
                         {
@@ -395,6 +416,19 @@ def get_imputation_scores_df(
                             f"{attribution_method}_{attributed_fn}": target_context_scores,
                         }
                     )
+                    if include_per_unit_scores and attributed_fn == "base":
+                        unaggr_target_context_scores = out[0].target_attributions[
+                            lang_tag_offset:source_sep_idx, cst_idx, ...
+                        ]
+                        target_scores_size = list(unaggr_target_context_scores.size())
+                        unit_sizes = dict(zip(units_names, target_scores_size[::-1][: len(units_names)]))
+                        unit_combinations = product(*[range(unit_sizes[unit]) for unit in units_names])
+                        for unit_combination in unit_combinations:
+                            unit_combination = tuple(reversed(unit_combination))
+                            name_id = "_".join([f"{unit}{idx}" for unit, idx in zip(unit_combination, units_names)])
+                            curr_scores_df[f"{attribution_method}_{name_id}"] = unaggr_target_context_scores[
+                                (...,) + unit_combination
+                            ]
                     curr_scores_df = pd.concat([curr_scores_df, curr_scores_target_df], ignore_index=True)
                 if curr_method_out_df is None:
                     curr_method_out_df = curr_scores_df
