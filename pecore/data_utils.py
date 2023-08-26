@@ -117,3 +117,13 @@ class DatasetExample:
     generated_target_full: Optional[str] = None
     generated_target_current: Optional[str] = None
     generated_target_context: Optional[str] = None
+
+
+@dataclass
+class PECoReExample:
+    input_full: str
+    input_current: str
+    input_context: str
+    output_full: str
+    output_current: str
+    output_context: str

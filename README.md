@@ -69,6 +69,40 @@ accelerate launch scripts/train_context_aware_mt_model.py \
 ```
 </details>
 
+## Using the PECoRe CLI
+
+The PECoRe CLI is a command-line interface for running the PECoRe steps on a given model and dataset. The CLI is implemented in the `pecore/cli.py` script and can be used as `pecore-viz` upon installing the package with `pip install -e .`. The current implementation supports the identification of context-sensitive targets (CTI) and the imputation of contextual cues (CCI) for all encoder-decoder models supported by the [Inseq](https://github.com/inseq-team/inseq) framework, including models with language prefix tags (mBART-50, NLLB, M2M100) and models trained with special context tags (e.g. the collection of models found in the [context-mt](https://huggingface.co/context-mt) organization on the HF Hub). The CLI can be used to run the PECoRe steps on a given model and example as follows:
+
+```shell
+pecore-viz \
+    --model_name context-mt/scat-marian-small-ctx4-cwd1-en-fr \
+    --attributions_aggregate_fns sum \
+    --model_use_ctx_break \
+    --impute_with_contextless_output \
+    --force_context_aware_output_prefix \
+    --input "Did I mention we stole a cow? A beautiful animal, truly. We brought it to the stable and kept it there for ages.<brk> Sadly, we could not foresee it would disappear."
+```
+
+The example above produces the following output, correctly highlighting the dependence on the pronoun "il" on the nouns "cow" and "animal" in the context.
+
+```shell
+Context with contextual cues (std λ=1.00) followed by output sentence
+with context-sensitive target spans (std λ=1.00):
+
+Input context:  Did I mention we stole a cow? A beautiful animal, truly. We brought it to the stable and kept it there for ages.
+Input current:  Sadly, we could not foresee it would disappear.
+Context-aware output:   Malheureusement, nous n'avons pas pu prévoir qu'il disparaîtrait.
+Using '<brk> ' to separate context and current inputs.
+
+#1. (CTI |kl_divergence| > 0.14, CCI |saliency| > 0.71)
+Contextless output:     Malheureusement, nous n'avons pas pu prévoir qu'il disparaîtrait.
+Current output:  Malheureusement, nous n'avons pas pu prévoir qu'il(0.412) disparaîtrait.
+Input context:   Did I mention we stole a cow(1.524)? A beautiful animal(1.472), truly. We brought it to the stable and kept it 
+there for ages.
+```
+
+## Reproducing the Paper Results
+
 ### Translate with a Context-Aware NMT Model
 
 ```shell
@@ -150,7 +184,7 @@ python scripts/tag_cti_metrics.py \
     --examples_path outputs/processed_examples/scat-mbart50-1toM-scat-target.tsv \
     --model_name context-mt/scat-mbart50-1toM-target-ctx4-cwd0-en-fr \
     --model_type mbart50-1toM \
-    --start_idx 212
+    --start_idx 293
 ```
 
 ### PECoRe Step 2: Contextual Cues Imputation (CCI)

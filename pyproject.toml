@@ -35,6 +35,9 @@ dependencies = [
 [project.urls]
 homepage = "https://github.com/gsarti/pecore"
 
+[project.scripts]
+pecore-viz = "pecore.cli:pecore_viz"
+
 [tool.setuptools]
 py-modules = ["pecore"]
 
