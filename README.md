@@ -101,6 +101,54 @@ Input context:   Did I mention we stole a cow(1.524)? A beautiful animal(1.472),
 there for ages.
 ```
 
+When using the CLI to run a regular model, an additional step will be needed to specify the position of the context break in model's generation if an output is not forced by the user. Here is an example using the regular mBART-50 model from the HF Hub:
+
+```shell
+pecore-viz \
+    --model_name facebook/mbart-large-50-one-to-many-mmt \
+    --input_lang eng --output_lang fra --model_type mbart50-1toM \
+    --impute_with_contextless_output \
+    --force_context_aware_output_prefix \
+    --input "Did I mention we stole a cow? A beautiful animal, truly. We brought it to the stable and kept it there for ages.<brk> Sadly, we could not foresee it would disappear."
+```
+
+The user will be prompted with the following message:
+
+```shell
+The following output was generate by the model: J’ai mentionné que nous avons volé une vache, c’est vraiment un beau animal, que nous avons emmené à l’élevage et que nous l’avons gardée pendant des époques. Malheureusement, nous n’avons pas pu prévoir qu’elle disparaîtrait.
+Rewrite it here by adding '<brk> ' wherever appropriate to mark context break:
+```
+
+The user can then rewrite the output by adding `<brk> ` wherever appropriate to mark the context break:
+
+```shell
+J’ai mentionné que nous avons volé une vache, c’est vraiment un beau animal, que nous avons emmené à l’élevage et que nous l’avons gardée pendant des époques.<brk> Malheureusement, nous n’avons pas pu prévoir qu’elle disparaîtrait.
+```
+
+The final output will be:
+
+```shell
+Context with contextual cues (std λ=1.00) followed by output sentence
+with context-sensitive target spans (std λ=1.00):
+
+Input context:  Did I mention we stole a cow? A beautiful animal, truly. We brought it to the stable and kept it there for ages.
+Input current:  Sadly, we could not foresee it would disappear.
+Output context: J’ai mentionné que nous avons volé une vache, c’est vraiment un beau animal, que nous avons emmené à l’élevage et que nous l’avons gardée pendant 
+des époques.
+Context-aware output:   J’ai mentionné que nous avons volé une vache, c’est vraiment un beau animal, que nous avons emmené à l’élevage et que nous l’avons gardée 
+pendant des époques. Malheureusement, nous n’avons pas pu prévoir qu’elle disparaîtrait.
+Using language tags for model type 'mbart50-1toM' (eng -> fra).
+
+#1. (CTI |kl_divergence| > 1.08, CCI |saliency| > 0.00)
+Contextless output:     Malheureusement, nous n'avons pas pu prévoir sa disparition.
+Current output:  Malheureusement, nous n’(3.505)avons pas pu prévoir qu’elle disparaîtrait.
+Input context:   Did I mention we stole a cow? A beautiful animal, truly. We brought it to the stable(0.002) and kept it there for ages.
+Output context:  J’(0.004)ai mentionné que nous avons volé une vache, c’(0.002)est vraiment un beau animal, que nous avons emmené à l’(0.003)élevage et que nous 
+l’(0.007)avons gardée pendant des époques.
+```
+
+In this case, we see the model opts to generate the curved apostrophe `’` rather than the straight one `'` used by default in the contextless output to stick to the output context style, employing that character on several occasions (identified as contextual cues by PECoRe).
+
 ## Reproducing the Paper Results
 
 ### Translate with a Context-Aware NMT Model

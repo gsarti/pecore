@@ -218,22 +218,30 @@ def visualize_procedure_details(
 
 def prepare_inputs_outputs(
     model: AttributionModel,
-    input: str,
+    input_txt: str,
     output: str,
     ctx_break: str,
     model_use_ctx_break: bool,
     excluded_tokens: List[str],
     gen_kwargs: Dict[str, Any] = {},
 ) -> Tuple[PECoReExample, bool]:
-    if len(input.split(ctx_break)) > 2:
+    if len(input_txt.split(ctx_break)) > 2:
         raise ValueError("Only a single context for inputs is supported at the moment.")
-    input_context, input_current = input.split(ctx_break)
-    input_full = input if model_use_ctx_break else " ".join([input_context, input_current])
+    input_context, input_current = input_txt.split(ctx_break)
+    input_full = input_txt if model_use_ctx_break else " ".join([input_context, input_current])
+    set_manual_output_ctx_break = False
+    if not model_use_ctx_break and output is None:
+        set_manual_output_ctx_break = True
     if output is None:
         output = model.generate(input_full, skip_special_tokens=False, **gen_kwargs)[0]
         for tok in excluded_tokens:
             output = output.replace(tok, "")
         output = output.strip()
+    if set_manual_output_ctx_break:
+        output = input(
+            f"The following output was generate by the model: {output}\n"
+            f"Rewrite it here by adding '{ctx_break}' wherever appropriate to mark context break: "
+        )
     has_output_context = ctx_break in output
     if has_output_context:
         if len(output.split(ctx_break)) > 2:
@@ -266,23 +274,23 @@ def scores_to_rank(
     tokens: Optional[List[str]] = None,
     excluded_tokens: List[str] = [],
 ) -> Union[Tuple[List[Tuple[int, float]], float], Tuple[List[List[Tuple[int, float]]], float]]:
-    if isinstance(all_scores, list):
-        all_scores_tensor = torch.cat(all_scores)
-    else:
-        all_scores_tensor = all_scores.clone()
+    if not isinstance(all_scores, list):
         all_scores = [all_scores]
-    if threshold:
-        threshold_val = all_scores_tensor.mean() + threshold * all_scores_tensor.std()
     all_idxs_and_scores = []
+    all_filtered_scores = []
     for scores in all_scores:
         l_scores = scores.tolist()
         if excluded_tokens and tokens:
             scores = torch.tensor([s for idx, s in enumerate(l_scores) if tokens[idx] not in excluded_tokens])
             l_scores = scores.tolist()
+        all_filtered_scores.append(scores)
         idxs_and_scores = sorted([(i, x) for i, x in enumerate(l_scores)], key=lambda x: abs(x[1]), reverse=True)
-        if threshold:
-            idxs_and_scores = [(i, x) for i, x in idxs_and_scores if abs(x) > threshold_val]
         all_idxs_and_scores.append(idxs_and_scores[:top_k])
+    if threshold:
+        all_scores_tensor = torch.cat(all_filtered_scores)
+        threshold_val = all_scores_tensor.mean() + threshold * all_scores_tensor.std()
+        for i in range(len(all_idxs_and_scores)):
+            all_idxs_and_scores[i] = [(i, x) for i, x in all_idxs_and_scores[i] if abs(x) > threshold_val]
     if len(all_idxs_and_scores) > 1:
         return all_idxs_and_scores, threshold_val
     return all_idxs_and_scores[0], threshold_val
@@ -435,7 +443,7 @@ def visualize_pecore_example(
             output_context_tokens[cci_tok_idx] = (
                 f"[/white][bold green]{output_context_tokens[cci_tok_idx]}({cci_tok_score:.3f})[/bold green][white]"
             )
-        output_context_comment = f"\n[bold]Output context:[/bold]\t{' '.join(output_context_tokens)}"
+        output_context_comment = f"\n[bold]Output context:[/bold]\t{''.join(output_context_tokens)}"
     rprint(
         f"\n#{example_idx}. (CTI |{cti_metric}| > {cti_scores_threshold:.2f}, "
         f"CCI |{cci_metric}| > {cci_scores_threshold:.2f})"
@@ -462,7 +470,7 @@ def pecore_viz():
         args.excluded_tokens += [model.tokenizer.src_lang, model.tokenizer.tgt_lang]
     ex, has_output_context = prepare_inputs_outputs(
         model=model,
-        input=args.input,
+        input_txt=args.input,
         output=args.output,
         ctx_break=args.ctx_break,
         model_use_ctx_break=args.model_use_ctx_break,
@@ -505,7 +513,7 @@ def pecore_viz():
         all_scores=cti_out.step_scores[args.cti_metric],
         top_k=args.cti_scores_top_k,
         threshold=args.cti_scores_std_threshold,
-        tokens=cti_out.target,
+        tokens=[t.token for t in cti_out.target],
         excluded_tokens=args.excluded_tokens,
     )
 
