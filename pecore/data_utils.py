@@ -11,14 +11,24 @@ DOC_FIELD_MAP = {
     "iwslt17": "doc_id",
 }
 
+SEQ_DATASETS = [DatasetEnum.FLORES, DatasetEnum.IWSLT]
+MERGED_DATASETS = [DatasetEnum.SCAT, DatasetEnum.DISC_EVAL_MT]
 
-def load_mt_dataset(dataset_name: str, src_lang: Optional[str] = None, tgt_lang: Optional[str] = None) -> Dataset:
+
+def load_mt_dataset(
+    dataset_name: str,
+    src_lang: Optional[str] = None,
+    tgt_lang: Optional[str] = None,
+    dataset_config: Optional[str] = None,
+) -> Dataset:
     if dataset_name == DatasetEnum.FLORES:
         return load_dataset("gsarti/flores_101", "all", split="devtest")
     elif dataset_name == DatasetEnum.IWSLT:
         return load_dataset("gsarti/iwslt2017_context", f"iwslt2017-{src_lang[:2]}-{tgt_lang[:2]}", split="test")
     elif dataset_name == DatasetEnum.SCAT:
         return load_dataset("inseq/scat", split="test", verification_mode=VerificationMode.NO_CHECKS)
+    elif dataset_name == DatasetEnum.DISC_EVAL_MT:
+        return load_dataset("inseq/disc_eval_mt", name=dataset_config, split="test")
     else:
         raise ValueError(f"Not available: {dataset_name}")
 
@@ -37,7 +47,7 @@ def get_src_ref_sentences(
     elif dataset_name == DatasetEnum.IWSLT:
         src = [ex[src_lang[:2]] for ex in dataset["translation"]]
         ref = [ex[tgt_lang[:2]] for ex in dataset["translation"]]
-    elif dataset_name == DatasetEnum.SCAT:
+    elif dataset_name == DatasetEnum.SCAT or DatasetEnum.DISC_EVAL_MT:
         src = dataset[src_lang[:2]]
         ref = dataset[tgt_lang[:2]]
     else:
@@ -81,7 +91,7 @@ def get_preprocess_dataset_fn(context_size: int, dataset: str = "flores", src_la
 
     def preprocess_dataset_merged(examples: Dict[str, List[Any]]):
         """Builds context-aware examples for datasets with context available in the same example (e.g. SCAT)."""
-        if dataset == DatasetEnum.SCAT:
+        if dataset in MERGED_DATASETS:
             inputs = examples[src_lang[:2]]
             contexts = examples[f"context_{src_lang[:2]}"]
         else:
@@ -94,9 +104,9 @@ def get_preprocess_dataset_fn(context_size: int, dataset: str = "flores", src_la
                 context_inputs.append(inputs[idx])
         return {"sentence": context_inputs}
 
-    if dataset in [DatasetEnum.FLORES, DatasetEnum.IWSLT]:
+    if dataset in SEQ_DATASETS:
         return preprocess_dataset_seq
-    elif dataset in [DatasetEnum.SCAT]:
+    elif dataset in MERGED_DATASETS:
         return preprocess_dataset_merged
 
 

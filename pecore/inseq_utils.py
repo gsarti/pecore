@@ -1,6 +1,6 @@
 import logging
 from itertools import product
-from typing import Dict, List, Optional, Protocol, Tuple
+from typing import Any, Dict, List, Optional, Protocol, Tuple, Union
 
 import inseq
 import pandas as pd
@@ -10,7 +10,7 @@ from inseq.attr.step_functions import StepFunctionArgs, _get_contrast_output
 from inseq.data import FeatureAttributionInput
 from inseq.utils import logits_kl_divergence
 
-from .alignment_utils import get_model_cue_target_tags
+from .alignment_utils import get_model_cue_target_tags, tokenize_subwords
 from .data_utils import DatasetExample
 from .enums import AttributeFnEnum
 from .model_utils import has_lang_tag
@@ -184,18 +184,29 @@ def attribute_contrast(
     target_current = example.gold_target_current if use_gold_target_current else example.generated_target_current
     target_context = example.gold_target_context if use_gold_target_context else example.generated_target_context
     has_target_context = target_context is not None and pd.notnull(target_context)
+    model_has_lang_tag = has_lang_tag(model)
     # Handle missing source context
-    if example.source_full.startswith(context_separator) or not isinstance(target_current, str):
+    if (context_separator and example.source_full.startswith(context_separator)) or not isinstance(
+        target_current, str
+    ):
         print(f"Skipping example {curr_idx}")
         return None
     target_full = target_context + f"{context_separator} " + target_current if has_target_context else target_current
     offset = 0
     if has_target_context:
-        target_context_tokens = model.encode(target_context, as_targets=True).input_tokens[0]
-        offset = len(target_context_tokens)
+        target_context_tokens = model.encode(
+            target_context, as_targets=True, add_bos_token=not model_has_lang_tag
+        ).input_tokens[0]
+        offset = len(target_context_tokens) - 1
+        if context_separator:
+            offset += 1
+    curr_len = len(model.encode(target_current, as_targets=True, add_bos_token=not model_has_lang_tag).input_tokens[0])
+    start = 1
+    if has_target_context and context_separator:
         if has_lang_tag(model):
-            offset -= 1
-    curr_len = len(model.encode(target_current, as_targets=True).input_tokens[0]) - 1
+            start = 3
+        else:
+            start = 2
     out = model.attribute(
         example.source_full,
         target_full,
@@ -207,8 +218,7 @@ def attribute_contrast(
         contrast_sources=example.source_current,
         contrast_targets=target_current,
         contrast_targets_alignments=[
-            (idx_full, idx_curr)
-            for idx_curr, idx_full in enumerate(range(offset, offset + curr_len), start=1 if has_target_context else 0)
+            (idx_full, idx_curr) for idx_curr, idx_full in enumerate(range(offset, offset + curr_len), start=start)
         ],
     )
     return out
@@ -294,6 +304,56 @@ def get_attribute_fn(attribute_fn: str) -> AttributeFn:
     return ATTRIBUTE_FN_DICT[attribute_fn]
 
 
+def prepare_cci_params(
+    model: AttributionModel,
+    has_output_context: bool,
+    output_context: str,
+    output_current: str,
+    input_current: str,
+    impute_with_contextless_output: bool,
+    ctx_break: str,
+    cti_tok_idx: int,
+    model_use_ctx_break: bool,
+    model_has_lang_tag: bool,
+    force_context_aware_output_prefix: bool,
+    gen_kwargs: Dict[str, Any] = {},
+) -> Tuple[str, Union[List[Tuple[int, int]], str], int, int]:
+    lang_tag_offset = 1 if model_has_lang_tag else 0
+    if force_context_aware_output_prefix:
+        output_current_enc = model.encode(output_current, as_targets=True)
+        gen_kwargs["decoder_input_ids"] = output_current_enc.input_ids[:, : cti_tok_idx + 1 + lang_tag_offset]
+    offset = 0
+    if has_output_context:
+        output_context_tokens = model.encode(
+            output_context.strip(ctx_break), as_targets=True, add_bos_token=not model_has_lang_tag
+        ).input_tokens[0]
+        # Drop EOS token
+        offset = len(output_context_tokens) - 1
+        # Assuming context break is a single token in model's vocabulary
+        if model_use_ctx_break:
+            offset += 1
+    if impute_with_contextless_output:
+        output_current_contrast = model.generate(input_current, max_new_tokens=200, **gen_kwargs)[0]
+        aligns = "auto"
+    else:
+        output_current_contrast = output_current
+        curr_len = len(
+            model.encode(output_current, as_targets=True, add_bos_token=not model_has_lang_tag).input_tokens[0]
+        )
+        start = 0
+        if has_output_context and model_use_ctx_break:
+            if model_has_lang_tag:
+                start = 2
+            else:
+                start = 1
+        aligns = [
+            (idx_full, idx_curr) for idx_curr, idx_full in enumerate(range(offset, offset + curr_len), start=start)
+        ]
+    # +1 for lang tag if present, BOS otherwise
+    pos_start = offset + cti_tok_idx + 1
+    return output_current_contrast, aligns, pos_start
+
+
 def get_imputation_scores_df(
     example: DatasetExample,
     model: AttributionModel,
@@ -306,13 +366,20 @@ def get_imputation_scores_df(
     context_separator: str = "<brk>",
     target_tags: Optional[List[bool]] = None,
     include_per_unit_scores: bool = False,
-    units_names: List[str] = ["h", "l"],
+    units_names: List[str] = ["l", "h"],
+    impute_with_contextless_output: bool = False,
+    force_context_aware_output_prefix: bool = False,
+    gen_kwargs: Dict[str, Any] = {},
 ) -> Optional[pd.DataFrame]:
+    if example.source_context is None or not example.source_context or not pd.notnull(example.source_context):
+        return None
     target_context = example.gold_target_context if use_gold_target_context else example.generated_target_context
     has_target_context = target_context is not None and pd.notnull(target_context)
     target_current = example.gold_target_current if use_gold_target_current else example.generated_target_current
     target_full = target_context + f"{context_separator} " + target_current if has_target_context else target_current
     has_target_context = target_context is not None and pd.notnull(target_context)
+    use_lang_tag = has_lang_tag(model)
+    lang_tag_offset = 1 if use_lang_tag else 0
     if target_tags is None:
         if example.gold_target_current_tagged is None:
             raise ValueError(
@@ -328,70 +395,90 @@ def get_imputation_scores_df(
             is_generated_untagged=not use_gold_target_current,
             model_type=model_type,
         )
+    source_context_tokens = tokenize_subwords(
+        example.source_context,
+        model,
+        model_type=model_type,
+        is_target=False,
+        special_tokens=["<pad>", "</s>"],
+        special_characters=[],
+    )
+    source_sep_idx = len(source_context_tokens)
+    target_context_tokens = None
+    if has_target_context:
+        target_context_tokens = tokenize_subwords(
+            target_context,
+            model,
+            model_type=model_type,
+            is_target=True,
+            special_tokens=["<pad>", "</s>"],
+            special_characters=[],
+        )
+        target_sep_idx = len(target_context_tokens)
     target_tags_indices = [i for i, tag in enumerate(target_tags) if tag]
     if not target_tags_indices:
         logger.warning(f"No target tags found for example {curr_idx}.")
+
     out_df = None
-    for attribution_method in attribution_methods:
-        model.setup(attribution_method=attribution_method)
-        curr_fns = attributed_fns
-        if not model.attribution_method.use_predicted_target:
-            curr_fns = ["base"]
-        for attributed_fn in curr_fns:
-            if attributed_fn == "base":
-                out = model.attribute(
+    for cti_idx in target_tags_indices:
+        curr_idx_out_df = None
+        output_current_contrast, aligns, pos_start = prepare_cci_params(
+            model=model,
+            has_output_context=has_target_context,
+            output_context=target_context,
+            output_current=target_current,
+            input_current=example.source_current,
+            impute_with_contextless_output=impute_with_contextless_output,
+            ctx_break=context_separator,
+            cti_tok_idx=cti_idx - lang_tag_offset,
+            model_use_ctx_break=True,
+            model_has_lang_tag=has_lang_tag(model),
+            force_context_aware_output_prefix=force_context_aware_output_prefix,
+            gen_kwargs=gen_kwargs,
+        )
+        for attribution_method in attribution_methods:
+            model.setup(attribution_method=attribution_method)
+            curr_attributed_fns = attributed_fns
+            if not model.attribution_method.use_predicted_target:
+                curr_attributed_fns = ["default"]
+            for attributed_fn in curr_attributed_fns:
+                attribute_kwargs = {}
+                if attributed_fn != "default":
+                    attribute_kwargs["attributed_fn"] = attributed_fn
+                    attribute_kwargs["contrast_sources"] = example.source_current
+                    attribute_kwargs["contrast_targets"] = output_current_contrast
+                    attribute_kwargs["contrast_targets_alignments"] = aligns
+                cci_out = model.attribute(
                     example.source_full,
                     target_full,
                     attribute_target=True,
                     show_progress=False,
-                    method=attribution_method,
+                    attr_pos_start=pos_start,
+                    attr_pos_end=pos_start + 1,
+                    **attribute_kwargs,
                 )
-            else:
-                out = attribute_contrast(
-                    example=example,
-                    model=model,
-                    curr_idx=curr_idx,
-                    use_gold_target_current=use_gold_target_current,
-                    use_gold_target_context=use_gold_target_context,
-                    context_separator=context_separator,
-                    attributed_fn=attributed_fn if attributed_fn != "base" else None,
-                    attribution_method=attribution_method,
-                )
-            if out is None:
-                return None
-            if attributed_fn == "base":
-                aggr_out = out.aggregate(normalize=False)
-            else:
-                aggr_out = out.aggregate("sum", normalize=False)
-            use_lang_tag = has_lang_tag(model)
-            source_sep_idx = [t.token for t in aggr_out[0].source].index(context_separator)
-            lang_tag_offset = 1 if use_lang_tag else 0
-            if has_target_context:
-                special_tok = context_separator
-                if use_lang_tag and attributed_fn != "base":
-                    special_tok = f"{model.tokenizer.tgt_lang} → {context_separator}"
-                target_sep_idx = [t.token for t in aggr_out[0].target].index(special_tok)
-                target_context_tokens = [t.token for t in aggr_out[0].target[lang_tag_offset:target_sep_idx]]
-            # Extract context attribution for every context-sensitive token
-            curr_method_out_df = None
-            source_context_tokens = [t.token for t in aggr_out[0].source[lang_tag_offset:source_sep_idx]]
-            for cst_idx in target_tags_indices:
-                source_context_scores = (
-                    aggr_out[0].source_attributions[lang_tag_offset:source_sep_idx, cst_idx].tolist()
-                )
+                if attributed_fn == "default":
+                    aggr_out = cci_out[0].aggregate(normalize=False)
+                else:
+                    aggr_out = cci_out[0].aggregate("sum", normalize=False)
+
+                # Extract context attribution for every context-sensitive token
+                source_context_scores = aggr_out.source_attributions[
+                    lang_tag_offset : lang_tag_offset + source_sep_idx, 0
+                ].tolist()
                 curr_scores_df = pd.DataFrame(
                     {
                         "example_idx": curr_idx,
-                        "token_idx": list(range(lang_tag_offset, source_sep_idx)),
+                        "token_idx": [i for i, _ in enumerate(source_context_tokens)],
                         "side": "S",
-                        "target_cst_idx": cst_idx,
+                        "cti_idx": cti_idx,
                         "token": source_context_tokens,
                         f"{attribution_method}_{attributed_fn}": source_context_scores,
                     }
                 )
-                if include_per_unit_scores and attributed_fn == "base":
-                    unaggr_source_context_scores = out[0].source_attributions[
-                        lang_tag_offset:source_sep_idx, cst_idx, ...
+                if include_per_unit_scores and attributed_fn == "default":
+                    unaggr_source_context_scores = cci_out[0].source_attributions[
+                        lang_tag_offset : lang_tag_offset + source_sep_idx, 0, ...
                     ]
                     source_scores_size = list(unaggr_source_context_scores.size())
                     unit_sizes = dict(zip(units_names, source_scores_size[::-1][: len(units_names)]))
@@ -403,22 +490,22 @@ def get_imputation_scores_df(
                             (...,) + unit_combination
                         ]
                 if has_target_context:
-                    target_context_scores = (
-                        aggr_out[0].target_attributions[lang_tag_offset:target_sep_idx, cst_idx].tolist()
-                    )
+                    target_context_scores = aggr_out.target_attributions[
+                        lang_tag_offset : lang_tag_offset + target_sep_idx, 0
+                    ].tolist()
                     curr_scores_target_df = pd.DataFrame(
                         {
                             "example_idx": curr_idx,
-                            "token_idx": list(range(lang_tag_offset, target_sep_idx)),
+                            "token_idx": [i for i, _ in enumerate(target_context_tokens)],
                             "side": "T",
-                            "target_cst_idx": cst_idx,
+                            "cti_idx": cti_idx,
                             "token": target_context_tokens,
                             f"{attribution_method}_{attributed_fn}": target_context_scores,
                         }
                     )
-                    if include_per_unit_scores and attributed_fn == "base":
-                        unaggr_target_context_scores = out[0].target_attributions[
-                            lang_tag_offset:source_sep_idx, cst_idx, ...
+                    if include_per_unit_scores and attributed_fn == "default":
+                        unaggr_target_context_scores = cci_out[0].target_attributions[
+                            lang_tag_offset : lang_tag_offset + target_sep_idx, 0, ...
                         ]
                         target_scores_size = list(unaggr_target_context_scores.size())
                         unit_sizes = dict(zip(units_names, target_scores_size[::-1][: len(units_names)]))
@@ -426,18 +513,18 @@ def get_imputation_scores_df(
                         for unit_combination in unit_combinations:
                             unit_combination = tuple(reversed(unit_combination))
                             name_id = "_".join([f"{unit}{idx}" for unit, idx in zip(unit_combination, units_names)])
-                            curr_scores_df[f"{attribution_method}_{name_id}"] = unaggr_target_context_scores[
+                            curr_scores_target_df[f"{attribution_method}_{name_id}"] = unaggr_target_context_scores[
                                 (...,) + unit_combination
                             ]
                     curr_scores_df = pd.concat([curr_scores_df, curr_scores_target_df], ignore_index=True)
-                if curr_method_out_df is None:
-                    curr_method_out_df = curr_scores_df
+                if curr_idx_out_df is None:
+                    curr_idx_out_df = curr_scores_df
                 else:
-                    curr_method_out_df = pd.concat([curr_method_out_df, curr_scores_df], ignore_index=True)
-            if out_df is None:
-                out_df = curr_method_out_df
-            else:
-                out_df = pd.merge(
-                    out_df, curr_scores_df, on=["example_idx", "token_idx", "token", "side", "target_cst_idx"]
-                )
+                    curr_idx_out_df = pd.merge(
+                        curr_idx_out_df, curr_scores_df, on=["example_idx", "token_idx", "token", "side", "cti_idx"]
+                    )
+        if out_df is None:
+            out_df = curr_idx_out_df
+        else:
+            out_df = pd.concat([out_df, curr_idx_out_df], ignore_index=True)
     return out_df

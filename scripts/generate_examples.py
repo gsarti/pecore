@@ -37,6 +37,12 @@ def parse_args() -> argparse.Namespace:
         help="Dataset to use to generate examples.",
     )
     parser.add_argument(
+        "--dataset_config",
+        type=str,
+        default=None,
+        help="Dataset config to use.",
+    )
+    parser.add_argument(
         "--model_name",
         type=str,
         default=None,
@@ -132,7 +138,7 @@ def parse_args() -> argparse.Namespace:
 
 def format_examples():
     args = parse_args()
-    data = load_mt_dataset(args.dataset, args.src_lang, args.tgt_lang)
+    data = load_mt_dataset(args.dataset, args.src_lang, args.tgt_lang, dataset_config=args.dataset_config)
     model = inseq.load_model(args.model_name, "dummy")
     nlp = stanza.Pipeline(lang=args.src_lang[:2], processors="tokenize", download_method=None)
     src_context_column = args.context_column
@@ -170,22 +176,23 @@ def format_examples():
         tgt_current_tagged_column = "tgt_" + tgt_current_tagged_column
     if "{lang}" in args.contrast_column:
         contrast_column = contrast_column.format(lang=args.tgt_lang[:2])
-    generate_kwargs = {}
-    if has_lang_tag(model):
-        model.tokenizer.src_lang = get_lang_from_model_type(args.model_type, args.src_lang)
-        model.tokenizer.tgt_lang = get_lang_from_model_type(args.model_type, args.tgt_lang)
-        generate_kwargs["forced_bos_token_id"] = model.tokenizer.lang_code_to_id[model.tokenizer.tgt_lang]
-        args.special_tokens.append(model.tokenizer.tgt_lang)
     examples = []
     for _idx, ex in tqdm(enumerate(data), total=len(data)):
+        generate_kwargs = {}
+        if has_lang_tag(model):
+            model.tokenizer.src_lang = get_lang_from_model_type(args.model_type, args.src_lang)
+            model.tokenizer.tgt_lang = get_lang_from_model_type(args.model_type, args.tgt_lang)
+            generate_kwargs["forced_bos_token_id"] = model.tokenizer.lang_code_to_id[model.tokenizer.tgt_lang]
+            args.special_tokens.append(model.tokenizer.tgt_lang)
         if args.has_context:
             source = ex[src_context_column].strip() + "<brk> " + ex[src_current_column]
+            if args.has_target_context:
+                target = ex[tgt_context_column].strip() + "<brk> " + ex[tgt_current_column]
+            else:
+                target = ex[tgt_current_column]
         else:
             source = ex[src_context_column].strip() + " " + ex[src_current_column]
-        if args.has_target_context:
-            target = ex[tgt_context_column].strip() + "<brk> " + ex[tgt_current_column]
-        else:
-            target = ex[tgt_current_column]
+            target = ex[tgt_context_column].strip() + " " + ex[tgt_current_column]
         curr_example = {
             "source_full": source,
             "source_current": ex[src_current_column],
@@ -213,38 +220,24 @@ def format_examples():
                         for sent in nlp(ex[src_context_column]).sentences
                     ]
                 )
-                decoder_input = model.encode(generated_target_context, as_targets=True).to(model.device)
-                generate_kwargs["decoder_input_ids"] = decoder_input.input_ids
-                if has_lang_tag(model):
-                    lang_id_tensor = torch.tensor([model.tokenizer.lang_code_to_id[model.tokenizer.tgt_lang]])
-                    lang_id_tensor = lang_id_tensor.to(model.device)
-                    # Prepend the ID tensor to the original tensor along the first dimension (rows)
-                    generate_kwargs["decoder_input_ids"] = torch.cat(
-                        (lang_id_tensor.unsqueeze(0), generate_kwargs["decoder_input_ids"]), dim=1
-                    )
-            encoded_source = model.encode(source, as_targets=False).to(model.device)
-            generation_out = model.model.generate(
-                input_ids=encoded_source.input_ids,
-                attention_mask=encoded_source.attention_mask,
-                return_dict_in_generate=True,
-                **generate_kwargs,
-            )
-            encoded_source = encoded_source.to("cpu")
-            if not args.has_context:
-                decoder_input = decoder_input.to("cpu")
-            skip_special_tokens = False if args.has_target_context else True
-            generated_target = model.tokenizer.batch_decode(
-                generation_out.sequences, skip_special_tokens=skip_special_tokens
-            )[0]
-            for st in args.special_tokens:
-                generated_target = generated_target.replace(st, "")
-            generated_target = generated_target.strip()
-            del generation_out
-            torch.cuda.empty_cache()
-            if args.has_context and args.has_target_context:
-                generated_target_context = generated_target.split("<brk>")[0].strip()
-            start_pos = len(generated_target_context) if generated_target_context else 0
-            generated_target_current = generated_target[start_pos:].strip("<brk> ")
+                # decoder_input = model.encode(
+                #    generated_target_context, as_targets=True, add_bos_token=not has_lang_tag(model)
+                # ).to(model.device)
+                # generate_kwargs["decoder_input_ids"] = decoder_input.input_ids
+                generated_target_current = model.generate(ex[src_current_column], **generate_kwargs)[0]
+                torch.cuda.empty_cache()
+                generated_target = generated_target_context + " " + generated_target_current
+            else:
+                generated_target = model.generate(
+                    source, skip_special_tokens=not args.has_target_context, **generate_kwargs
+                )[0].strip()
+                for st in args.special_tokens:
+                    generated_target = generated_target.replace(st, "")
+                torch.cuda.empty_cache()
+                if args.has_context and args.has_target_context:
+                    generated_target_context = generated_target.split("<brk>")[0].strip()
+                start_pos = len(generated_target_context) if generated_target_context else 0
+                generated_target_current = generated_target[start_pos:].strip("<brk> ")
             curr_example["generated_target_full"] = generated_target
             curr_example["generated_target_current"] = generated_target_current
             curr_example["generated_target_context"] = generated_target_context
@@ -252,7 +245,10 @@ def format_examples():
         if _idx < 3:
             pprint(curr_example)
     df = pd.DataFrame(examples)
-    save_path = Path(args.output_dir) / f"{args.dataset}-{args.model_id}.tsv"
+    save_path = (
+        Path(args.output_dir)
+        / f"{args.dataset}{'-' + args.dataset_config if args.dataset_config else ''}-{args.model_id}.tsv"
+    )
     df.to_csv(save_path, index=False, sep="\t")
     logger.info(f"{len(df)} examples saved to {save_path}")
 

@@ -149,6 +149,22 @@ l’(0.007)avons gardée pendant des époques.
 
 In this case, we see the model opts to generate the curved apostrophe `’` rather than the straight one `'` used by default in the contextless output to stick to the output context style, employing that character on several occasions (identified as contextual cues by PECoRe).
 
+### Customizing Attribution Method
+
+In this example, we use the attention weight of head 8 in layer 5 for attributing context dependence. This head was found empirically to align well with human intuition.
+
+```shell
+pecore-viz \
+    --model_name context-mt/scat-marian-small-ctx4-cwd1-en-fr \
+    --attributions_aggregate_fns mean mean \
+    --model_use_ctx_break \
+    --impute_with_contextless_output \
+    --force_context_aware_output_prefix \
+    --input "Did I mention we stole a cow? A beautiful animal, truly. We brought it to the stable and kept it there for ages.<brk> Sadly, we could not foresee it would disappear." \
+    --attribution_method attention \
+    --select_attributions_idx 7 4
+```
+
 ## Reproducing the Paper Results
 
 ### Translate with a Context-Aware NMT Model
@@ -161,6 +177,51 @@ python scripts/translate.py \
     --context_size 4 \ 
     --dataset scat \
     --context_word_dropout 1
+
+python scripts/translate.py \
+    --model_type marian-big \
+    --model_id marian-big-scat-target \
+    --model_name context-mt/scat-marian-big-target-ctx4-cwd0-en-fr \
+    --context_size 4 \
+    --dataset disc_eval_mt \
+    --context_word_dropout 0 \
+    --dataset_config anaphora
+
+python scripts/translate.py \
+    --model_type marian-big \
+    --model_id marian-big-scat-target \
+    --model_name context-mt/scat-marian-big-target-ctx4-cwd0-en-fr \
+    --context_size 4 \
+    --dataset disc_eval_mt \
+    --context_word_dropout 0 \
+    --dataset_config lexical-choice
+
+python scripts/translate.py \
+    --model_type marian-big \
+    --model_id marian-big-scat \
+    --model_name context-mt/scat-marian-big-ctx4-cwd1-en-fr \
+    --context_size 4 \
+    --dataset disc_eval_mt \
+    --context_word_dropout 1 \
+    --dataset_config anaphora
+
+python scripts/translate.py \
+    --model_type marian-big \
+    --model_id marian-big-scat \
+    --model_name context-mt/scat-marian-big-ctx4-cwd1-en-fr \
+    --context_size 4 \
+    --dataset disc_eval_mt \
+    --context_word_dropout 1 \
+    --dataset_config lexical-choice
+
+python scripts/translate.py \
+    --model_type marian-big \
+    --model_id marian-big \
+    --model_name Helsinki-NLP/opus-mt-tc-big-en-fr \
+    --context_size 0 \
+    --dataset disc_eval_mt \
+    --context_word_dropout 0 \
+    --dataset_config lexical-choice
 ```
 
 ### Evaluate a Context-Aware NMT Model
@@ -173,6 +234,14 @@ python scripts/evaluate_mt_outputs.py \
     --src_lang eng \
     --tgt_lang fra \
     --metrics bleu comet accuracy
+
+python scripts/evaluate_mt_outputs.py \
+    --filepath outputs/translations/ctx/scat-mbart50-1toM-scat.txt \
+    --model_id mbart50-1toM-scat \
+    --dataset scat \
+    --src_lang eng \
+    --tgt_lang fra \
+    --metrics comet accuracy
 ```
 
 ### Create examples for running PECoRe steps
@@ -197,6 +266,26 @@ python scripts/generate_examples.py \
     --model_type mbart50-1toM \
     --has_context \
     --has_target_context \
+    --has_contrast
+
+python scripts/generate_examples.py \
+    --dataset disc_eval_mt \
+    --dataset_config anaphora \
+    --model_name context-mt/scat-marian-small-ctx4-cwd1-en-fr \
+    --src_lang eng \
+    --tgt_lang fra \
+    --model_id marian-small-scat \
+    --model_type marian-small \
+    --has_context \
+    --has_contrast
+
+python scripts/generate_examples.py \
+    --dataset scat \
+    --model_name Helsinki-NLP/opus-mt-en-fr \
+    --src_lang eng \
+    --tgt_lang fra \
+    --model_id marian-small \
+    --model_type marian-small \
     --has_contrast
 ```
 
@@ -259,5 +348,7 @@ python scripts/evaluate_tagged_metrics.py \
 python scripts/evaluate_tagged_metrics.py \
     --scores_path outputs/scores/scat-marian-small-scat-cci.tsv \
     --eval_mode cci \
-    --example_target_column is_supporting_context
+    --example_target_column is_supporting_context \
+    --initial_only \
+    --average_example_scores
 ```

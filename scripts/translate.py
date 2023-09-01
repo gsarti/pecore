@@ -61,6 +61,12 @@ def parse_args() -> argparse.Namespace:
         help="Dataset to use for translation.",
     )
     parser.add_argument(
+        "--dataset_config",
+        type=str,
+        default=None,
+        help="Dataset config to use.",
+    )
+    parser.add_argument(
         "--src_lang",
         type=str,
         default="eng",
@@ -120,7 +126,7 @@ def translate():
         dataset=args.dataset,
         src_lang=args.src_lang,
     )
-    data = load_mt_dataset(args.dataset, args.src_lang, args.tgt_lang)
+    data = load_mt_dataset(args.dataset, args.src_lang, args.tgt_lang, args.dataset_config)
     data_preproc = data.map(preproc_fn, batched=True, batch_size=2000, remove_columns=data.column_names)
     data_tokenized = data_preproc.map(lambda x: encode_examples(x, tok), batched=True, remove_columns=["sentence"])
     data_tokenized.set_format(type="torch", columns=["input_ids", "attention_mask"])
@@ -128,8 +134,9 @@ def translate():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model.eval().to(device)
     logger.info("Translating...")
-    out_folder = "ctx" if args.context_size > 0 else "noctx"
-    with open(Path(args.output_dir) / out_folder / f"{args.dataset}-{args.model_id}.txt", "a") as f:
+    out_folder = "ctx" if args.context_size > 0 else "no_ctx"
+    fname = f"{args.dataset}{'-' + args.dataset_config if args.dataset_config else ''}-{model_id}.txt"
+    with open(Path(args.output_dir) / out_folder / fname, "a") as f:
         gen_kwargs = {}
         if has_lang_prefix:
             gen_kwargs = {"forced_bos_token_id": tok.lang_code_to_id[tok_kwargs["tgt_lang"]]}
@@ -138,10 +145,9 @@ def translate():
             out = model.generate(**device_batch, **gen_kwargs)
             if args.context_size > 0:
                 translations = tok.batch_decode(out.to("cpu"), skip_special_tokens=False)
-                translations = [
-                    t.replace("<pad>", "").replace("</s>", "").replace(tok_kwargs["tgt_lang"], "").strip()
-                    for t in translations
-                ]
+                translations = [t.replace("<pad>", "").replace("</s>", "").strip() for t in translations]
+                if has_lang_prefix:
+                    translations = [t.replace(tok_kwargs["tgt_lang"], "").strip() for t in translations]
             else:
                 translations = tok.batch_decode(out.to("cpu"), skip_special_tokens=True)
             for trans in translations:

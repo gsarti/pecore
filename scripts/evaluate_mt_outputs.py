@@ -2,8 +2,8 @@ import argparse
 import logging
 
 from comet import download_model, load_from_checkpoint
-from pecore.alignment_utils import get_match_from_contrastive_pair
-from pecore.data_utils import get_src_ref_sentences, load_mt_dataset
+from pecore.alignment_utils import get_match_from_tagged_contrastive_pair
+from pecore.data_utils import MERGED_DATASETS, get_src_ref_sentences, load_mt_dataset
 from pecore.enums import DatasetEnum, MetricEnum
 from sacrebleu.metrics import BLEU
 from tqdm import tqdm
@@ -96,14 +96,15 @@ def evaluate():
             bleu = BLEU()
             print(args.dataset, args.model_id, bleu.corpus_score(sys, [refs]))
         if metric == MetricEnum.ACCURACY:
-            if args.dataset != DatasetEnum.SCAT:
-                raise ValueError("Only SCAT supports accuracy metric")
+            if args.dataset not in MERGED_DATASETS:
+                raise ValueError(f"Only {','.join(list(MERGED_DATASETS))} supports accuracy metric")
             tot_keywords, tot_correct = 0, 0
-            ref_contrast = data[f"contrast_{args.tgt_lang[:2]}"]
+            ref_contrast_with_tags = data[f"contrast_{args.tgt_lang[:2]}_with_tags"]
+            ref_with_tags = data[f"{args.tgt_lang[:2]}_with_tags"]
             for curr_ref, curr_ref_contrast, curr_mt in tqdm(
-                zip(refs, ref_contrast, sys), desc="Aligned accuracy", total=len(refs)
+                zip(ref_with_tags, ref_contrast_with_tags, sys), desc="Aligned accuracy", total=len(refs)
             ):
-                matches = get_match_from_contrastive_pair(curr_ref, curr_ref_contrast, curr_mt)
+                matches = get_match_from_tagged_contrastive_pair(curr_ref, curr_ref_contrast, curr_mt)
                 tot_keywords += len(matches)
                 tot_correct += len([x for x in matches if x == 1])
             print(args.dataset, args.model_id, "Aligned accuracy", round(tot_correct / tot_keywords, 4))

@@ -59,6 +59,29 @@ def get_match_from_contrastive_pair(
     return out
 
 
+def get_match_from_tagged_contrastive_pair(
+    tagged_ref_text: str,
+    tagged_contrast_ref_text: str,
+    pred_text: str,
+) -> List[int]:
+    """Returns a list of 0s and 1s, where 0 means that the word is not in the MT output and 1 means that it is."""
+    tag_content_pattern = r"<\w+>(.+?)</?\w+>"
+    tagged_ref_tok = re.findall(tag_content_pattern, tagged_ref_text)
+    tagged_contrast_ref_tok = re.findall(tag_content_pattern, tagged_contrast_ref_text)
+    if not isinstance(pred_text, str):
+        return [0]
+    pred_tok = [x.lower() for x in re.findall(r"\w+\b", pred_text)]
+    keywords = [ref.lower() for ref in tagged_ref_tok if ref not in tagged_contrast_ref_tok]
+    out = []
+    for kw in keywords:
+        if kw not in pred_tok:
+            out += [0]
+        else:
+            out += [1]
+            pred_tok.remove(kw)
+    return out
+
+
 def get_tokens_with_cue_target_tags(
     txt_tag: str, txt_clean: Optional[str] = None, tags: List[str] = ["<p>", "<hon>", "</p>", "<hoff>"]
 ) -> Tuple[List[str], List[int], List[int]]:

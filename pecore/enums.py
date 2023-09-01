@@ -11,6 +11,7 @@ class DatasetEnum(StrEnum):
     FLORES = "flores"
     IWSLT = "iwslt17"
     SCAT = "scat"
+    DISC_EVAL_MT = "disc_eval_mt"
 
 
 class MetricEnum(StrEnum):
@@ -44,5 +45,5 @@ class CCIMetricsEnum(StrEnum):
     GRAD_KL_DIV = "saliency_kl_divergence"
     IXG_PROB_DIFF = "input_x_gradient_contrast_prob_diff"
     IXG_KL_DIV = "input_x_gradient_kl_divergence"
-    ATTN_ALLMEAN = "attention_base"
+    ATTN_ALLMEAN = "attention_default"
     ATTN_BEST = "attention_best"

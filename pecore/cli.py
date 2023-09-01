@@ -6,12 +6,13 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import inseq
 import torch
 from inseq import AttributionModel
-from inseq.data import FeatureAttributionSequenceOutput
+from inseq.data import FeatureAttributionOutput, FeatureAttributionSequenceOutput
 from rich import print as rprint
 
 from pecore.alignment_utils import tokenize_subwords
 from pecore.data_utils import PECoReExample
 from pecore.enums import CTIMetricsEnum, ModelTypeEnum
+from pecore.inseq_utils import prepare_cci_params
 from pecore.model_utils import get_lang_from_model_type, has_lang_tag
 
 logging.basicConfig(
@@ -85,6 +86,13 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--normalize_attributions", action="store_true", help="If specified, attributions are normalized to sum to 1."
+    )
+    parser.add_argument(
+        "--select_attributions_idx",
+        type=int,
+        nargs="+",
+        default=None,
+        help="Indices to select from produced attributions. Default is to use all elements.",
     )
     parser.add_argument(
         "--ctx_break",
@@ -296,48 +304,6 @@ def scores_to_rank(
     return all_idxs_and_scores[0], threshold_val
 
 
-def prepare_cci_params(
-    model: AttributionModel,
-    has_output_context: bool,
-    output_context: str,
-    output_current: str,
-    input_current: str,
-    impute_with_contextless_output: bool,
-    ctx_break: str,
-    model_use_ctx_break: bool,
-    model_has_lang_tag: bool,
-    lang_tag_offset: int,
-    gen_kwargs: Dict[str, Any] = {},
-) -> Tuple[str, Union[List[Tuple[int, int]], str], int, int]:
-    offset = 0
-    if has_output_context:
-        output_context_tokens = model.encode(
-            output_context.strip(ctx_break), as_targets=True, add_bos_token=not model_has_lang_tag
-        ).input_tokens[0]
-        offset = len(output_context_tokens) - 1 + lang_tag_offset
-        # Assuming context break is a single token in model's vocabulary
-        if has_output_context and model_use_ctx_break:
-            offset += 1
-    if impute_with_contextless_output:
-        output_current_contrast = model.generate(input_current, **gen_kwargs)[0]
-        aligns = "auto"
-    else:
-        output_current_contrast = output_current
-        curr_len = len(
-            model.encode(output_current, as_targets=True, add_bos_token=not model_has_lang_tag).input_tokens[0]
-        )
-        start = 0
-        if has_output_context and model_use_ctx_break:
-            if model_has_lang_tag:
-                start = 2
-            else:
-                start = 1
-        aligns = [
-            (idx_full, idx_curr) for idx_curr, idx_full in enumerate(range(offset, offset + curr_len), start=start)
-        ]
-    return output_current_contrast, aligns, offset
-
-
 def get_tokens_and_ctx_break_idxs(
     ex: PECoReExample,
     model: AttributionModel,
@@ -385,6 +351,25 @@ def get_tokens_and_ctx_break_idxs(
     )
 
 
+def aggregate_cci_scores(
+    cci_out: FeatureAttributionOutput,
+    select_attributions_idx: Optional[List[int]] = None,
+    attributions_aggregate_fns: Optional[List[str]] = None,
+    normalize_attributions: bool = False,
+) -> FeatureAttributionSequenceOutput:
+    if select_attributions_idx is not None and attributions_aggregate_fns is not None:
+        for idx, fn in zip(select_attributions_idx, attributions_aggregate_fns):
+            cci_out = cci_out.aggregate(
+                aggregator=fn,
+                normalize=normalize_attributions,
+                select_idx=idx,
+                do_post_aggregation_checks=False,
+            )
+    else:
+        cci_out = cci_out.aggregate(aggregator=attributions_aggregate_fns, normalize=normalize_attributions)
+    return cci_out[0]
+
+
 def get_cci_ranked_scores(
     cci_out: FeatureAttributionSequenceOutput,
     lang_tag_offset: int,
@@ -394,10 +379,10 @@ def get_cci_ranked_scores(
     top_k: int,
     threshold: float,
 ) -> Tuple[List[Tuple[int, float]], Optional[List[Tuple[int, float]]], float]:
-    cci_input_scores = cci_out.source_attributions[lang_tag_offset:input_break_idx, 0]
+    cci_input_scores = cci_out.source_attributions[lang_tag_offset : lang_tag_offset + input_break_idx, 0]
     rank_scores_args = {"all_scores": cci_input_scores}
     if has_output_context:
-        cci_output_scores = cci_out.target_attributions[lang_tag_offset:output_break_idx, 0]
+        cci_output_scores = cci_out.target_attributions[lang_tag_offset : lang_tag_offset + output_break_idx, 0]
         rank_scores_args["all_scores"] = [cci_input_scores, cci_output_scores]
     cci_outputs_idxs_and_scores = None
     cci_inputs_idxs_and_scores, cci_scores_threshold = scores_to_rank(
@@ -458,6 +443,7 @@ def pecore_viz():
     model = inseq.load_model(args.model_name, args.attribution_method)
     model_has_lang_tag = has_lang_tag(model)
     gen_kwargs = {}
+    lang_tag_offset = 1 if model_has_lang_tag else 0
     if model_has_lang_tag:
         if args.input_lang is None or args.output_lang is None or args.model_type is None:
             raise ValueError(
@@ -519,11 +505,7 @@ def pecore_viz():
 
     # Step 2: Contextual Cues Imputation
     for example_idx, (cti_tok_idx, cti_tok_score) in enumerate(cti_tok_idxs_and_scores, start=1):
-        lang_tag_offset = 1 if model_has_lang_tag else 0
-        if args.force_context_aware_output_prefix:
-            output_current_enc = model.encode(ex.output_current, as_targets=True)
-            gen_kwargs["decoder_input_ids"] = output_current_enc.input_ids[:, : cti_tok_idx + 1 + lang_tag_offset]
-        output_current_contrast, aligns, offset = prepare_cci_params(
+        output_current_contrast, aligns, pos_start = prepare_cci_params(
             model=model,
             has_output_context=has_output_context,
             output_context=ex.output_context,
@@ -531,28 +513,30 @@ def pecore_viz():
             input_current=ex.input_current,
             impute_with_contextless_output=args.impute_with_contextless_output,
             ctx_break=args.ctx_break,
+            cti_tok_idx=cti_tok_idx,
             model_has_lang_tag=model_has_lang_tag,
             model_use_ctx_break=args.model_use_ctx_break,
-            lang_tag_offset=lang_tag_offset,
+            force_context_aware_output_prefix=args.force_context_aware_output_prefix,
             gen_kwargs=gen_kwargs,
         )
-        pos_start = offset + cti_tok_idx if has_output_context else cti_tok_idx + lang_tag_offset + 1
-        pos_end = pos_start + 1
         cci_out = model.attribute(
             ex.input_full,
             ex.output_full,
             attribute_target=True,
             show_progress=False,
             attr_pos_start=pos_start,
-            attr_pos_end=pos_end,
+            attr_pos_end=pos_start + 1,
             attributed_fn=args.attributed_fn,
             method=args.attribution_method,
             contrast_sources=ex.input_current,
             contrast_targets=output_current_contrast,
             contrast_targets_alignments=aligns,
         )
-        cci_out = cci_out[0].aggregate(
-            aggregator=args.attributions_aggregate_fns, normalize=args.normalize_attributions
+        cci_out = aggregate_cci_scores(
+            cci_out=cci_out,
+            select_attributions_idx=args.select_attributions_idx,
+            attributions_aggregate_fns=args.attributions_aggregate_fns,
+            normalize_attributions=args.normalize_attributions,
         )
         if args.show_attributions:
             cci_out.show(do_aggregation=False)

@@ -1,5 +1,6 @@
 import argparse
 import logging
+from inspect import getfullargspec
 from pathlib import Path
 
 import inseq
@@ -104,6 +105,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Use gold target context instead of model generation.",
     )
+    parser.add_argument(
+        "--context_separator",
+        type=str,
+        default="<brk>",
+        help="Source language, required for models using language tags.",
+    )
     args = parser.parse_args()
     return args
 
@@ -157,13 +164,18 @@ def tag_cti_metrics():
             break
         curr_full_scores_df = None
         for attribute_fn_name in args.attribute_fns:
+            attribute_fn_args = {}
             attribute_fn = get_attribute_fn(attribute_fn_name)
+            params = getfullargspec(attribute_fn)
+            if "context_separator" in params.args:
+                attribute_fn_args["context_separator"] = args.context_separator
             curr_partial_scores_df = attribute_fn(
                 example=ex,
                 model=model,
                 curr_idx=idx,
                 use_gold_target_current=args.use_gold_target_current,
                 use_gold_target_context=args.use_gold_target_context,
+                **attribute_fn_args,
             )
             if curr_partial_scores_df is None:
                 continue
