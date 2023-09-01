@@ -6,7 +6,7 @@ from sklearn.dummy import DummyClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import auc, f1_score, precision_recall_curve
 from sklearn.model_selection import StratifiedKFold
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 from .enums import EvalModeEnum
 
@@ -69,11 +69,11 @@ def get_cti_mix_features(n_layers: int, has_target_context: bool) -> List[str]:
     return cti_mix
 
 
-def get_metrics_result(
+def get_metrics_result_with_trained_model(
     df: pd.DataFrame,
     train_mask: pd.Series,
     test_mask: pd.Series,
-    scores_columns: List[str] = None,
+    scores_columns: List[str],
     do_random: bool = False,
     target_column: str = "is_context_sensitive",
     n_cv_splits: int = 10,
@@ -141,3 +141,80 @@ def get_metrics_result(
         "avg_auprc": np.mean(auprc_scores).round(4),
         "std_auprc": np.std(auprc_scores).round(4),
     }
+
+
+def get_metric_results_from_scores(
+    df: pd.DataFrame,
+    test_mask: pd.Series,
+    score_column: str,
+    do_random: bool = False,
+    target_column: str = "is_context_sensitive",
+    example_id_column: str = "example_idx",
+    average_example_scores: bool = True,
+    pos_column: str = "pos",
+    valid_pos: List[str] = None,
+    input_type_column: str = "side",
+    valid_input_types: List[str] = ["S", "T"],
+    initial_only: bool = False,
+    token_column: str = "token",
+    initial_char: str = "▁",
+    fillna: bool = True,
+) -> Dict[str, float]:
+    if fillna:
+        df = df.fillna(df.mean(numeric_only=True))
+    df = df[test_mask]
+    if input_type_column in df.columns:
+        df = df[df[input_type_column].isin(valid_input_types)]
+    scaler = MinMaxScaler()
+    if average_example_scores:
+        examples = df[example_id_column].unique()
+        auprc_scores = []
+        f1_scores = []
+        for example in examples:
+            df_ex = df[df[example_id_column] == example]
+            ex_tgt = df_ex[target_column]
+            if valid_pos is not None:
+                c_pos = list(df_ex[pos_column])
+                ex_tgt = [s if c_pos[i] in valid_pos else 0 for i, s in enumerate(ex_tgt)]
+            if initial_only:
+                c_tok = list(df_ex[token_column])
+                ex_tgt = [s if initial_char in c_tok[i] else 0 for i, s in enumerate(ex_tgt)]
+            if do_random:
+                ex_scores = np.random.rand(len(ex_tgt))
+            else:
+                ex_scores = df_ex[score_column].to_numpy()
+            # Select only scores one standard deviation away from the mean
+            ex_scores_binary = ex_scores > (ex_scores.mean() + ex_scores.std())
+
+            ex_scores = scaler.fit_transform(ex_scores.reshape(-1, 1))
+            precision, recall, _ = precision_recall_curve(ex_tgt, ex_scores)
+            auprc = auc(recall, precision)
+            f1_val = f1_score(ex_tgt, ex_scores_binary, average="macro")
+            auprc_scores.append(auprc)
+            f1_scores.append(f1_val)
+        return {
+            "avg_auprc": np.mean(auprc_scores).round(4),
+            "std_auprc": np.std(auprc_scores).round(4),
+            "avg_macro_f1": np.mean(f1_scores).round(4),
+            "std_macro_f1": np.std(f1_scores).round(4),
+        }
+    else:
+        tgt = df[target_column]
+        if valid_pos is not None:
+            tgt = [s if df[pos_column][i] in valid_pos else 0 for i, s in enumerate(tgt)]
+        if initial_only:
+            tgt = [s if initial_char in df[token_column][i] else 0 for i, s in enumerate(tgt)]
+        if do_random:
+            scores = np.random.rand(len(tgt))
+        else:
+            scores = df[score_column].to_numpy()
+        # Select only scores one standard deviation away from the mean
+        scores_binary = scores > (scores.mean() + scores.std())
+        scores = scaler.fit_transform(scores.reshape(-1, 1))
+        precision, recall, _ = precision_recall_curve(tgt, scores)
+        auprc = auc(recall, precision)
+        f1_val = f1_score(tgt, scores_binary, average="macro")
+        return {
+            "auprc": auprc.round(4),
+            "macro_f1": f1_val.round(4),
+        }

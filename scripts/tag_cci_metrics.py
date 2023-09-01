@@ -125,9 +125,11 @@ def tag_cci_metrics():
         scores_df = pd.read_csv(out_path, sep="\t")
     if args.max_idx is None:
         args.max_idx = len(examples)
+    gen_kwargs = {}
     if has_lang_tag(model):
         model.tokenizer.src_lang = get_lang_from_model_type(args.model_type, args.src_lang)
         model.tokenizer.tgt_lang = get_lang_from_model_type(args.model_type, args.tgt_lang)
+        gen_kwargs["forced_bos_token_id"] = model.tokenizer.lang_code_to_id[model.tokenizer.tgt_lang]
     if not args.skip_token_tags:
         src_pipeline = stanza.Pipeline(lang=args.src_lang[:2], processors="tokenize,mwt,pos", download_method=None)
         tgt_pipeline = stanza.Pipeline(lang=args.tgt_lang[:2], processors="tokenize,mwt,pos", download_method=None)
@@ -145,8 +147,11 @@ def tag_cci_metrics():
             model_type=args.model_type,
             attribution_methods=args.attribution_methods,
             attributed_fns=args.attributed_fns,
-            # TODO: Provide custom target tags to test without gold tags.
             include_per_unit_scores=True,
+            impute_with_contextless_output=True,
+            force_context_aware_output_prefix=True,
+            gen_kwargs=gen_kwargs,
+            # TODO: Provide custom target tags to test without gold tags.
         )
         if curr_df is None:
             logger.warning("Skipping example %d, no imputation scores available.", idx)
@@ -200,9 +205,10 @@ def tag_cci_metrics():
                     cue_tags = cue_tags + target_cue_tags
                     pos_tags = pos_tags + target_pos_tags
                     feats_tags = feats_tags + target_feats_tags
-                curr_df["is_supporting_context"] = cue_tags
-                curr_df["pos"] = pos_tags
-                curr_df["morph_feats"] = feats_tags
+                n_ctx = len(curr_df.cti_idx.unique())
+                curr_df["is_supporting_context"] = cue_tags * n_ctx
+                curr_df["pos"] = pos_tags * n_ctx
+                curr_df["morph_feats"] = feats_tags * n_ctx
             except Exception as e:
                 logger.error(f"Error tagging cue tokens for example {idx}: {e}")
                 continue

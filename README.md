@@ -343,12 +343,20 @@ python scripts/tag_cci_metrics.py \
 ```shell
 python scripts/evaluate_tagged_metrics.py \
     --scores_path outputs/scores/scat-marian-small-scat-cti.tsv \
-    --eval_mode cti
+    --eval_mode cti \
+    --use_trained_model
+
+python scripts/evaluate_tagged_metrics.py \
+    --scores_path outputs/scores/scat-marian-small-scat-cti.tsv \
+    --eval_mode cti \
+    --average_example_scores \
+    --metrics random pcxmi kl_divergence
 
 python scripts/evaluate_tagged_metrics.py \
     --scores_path outputs/scores/scat-marian-small-scat-cci.tsv \
     --eval_mode cci \
     --example_target_column is_supporting_context \
-    --initial_only \
-    --average_example_scores
+    --average_example_scores \
+    --metrics random saliency_contrast_prob_diff attention_default attention_best
 ```
+

@@ -4,7 +4,12 @@ from collections import defaultdict
 from pathlib import Path
 
 import pandas as pd
-from pecore.analysis_utils import get_cti_mix_features, get_metrics_result, get_scat_splits
+from pecore.analysis_utils import (
+    get_cti_mix_features,
+    get_metric_results_from_scores,
+    get_metrics_result_with_trained_model,
+    get_scat_splits,
+)
 from pecore.enums import CCIMetricsEnum, CTIMetricsEnum, EvalModeEnum
 
 logging.basicConfig(
@@ -73,6 +78,38 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Whether the model has target context.",
     )
+    parser.add_argument(
+        "--use_trained_model",
+        action="store_true",
+        help="Whether to use a trained model or raw scores for evaluation.",
+    )
+    parser.add_argument(
+        "--initial_only",
+        action="store_true",
+        help="Whether to consider only the initial subword of a word as valid target.",
+    )
+    parser.add_argument(
+        "--valid_input_types",
+        type=str,
+        nargs="+",
+        default=["S", "T"],
+        help="Valid input sides for contribution to consider. Default all.",
+    )
+    parser.add_argument(
+        "--valid_pos_tags",
+        type=str,
+        nargs="+",
+        default=None,
+        help="Valid POS tags for contribution to consider. Default all.",
+    )
+    parser.add_argument(
+        "--average_example_scores",
+        action="store_true",
+        help=(
+            "Whether to average the scores over examples. If not set, scores are computed over all token at once"
+            " instead."
+        ),
+    )
     args = parser.parse_args()
     args.processed_metrics = defaultdict(list)
     if not args.metrics:
@@ -102,27 +139,52 @@ def evaluate_tagged_metrics():
     scores_df = pd.read_csv(args.scores_path, sep="\t")
     dataset_name = Path(args.scores_path).stem.split("-")[0]
     model_id = Path(args.scores_path).stem.split(".")[0][len(dataset_name) + 1 :]
-    out_path = Path(args.output_dir) / f"{dataset_name}-{model_id}-eval.tsv"
+    input_type_name = "" if args.valid_input_types == ["S", "T"] else "-" + "-".join(args.valid_input_types)
+    pos_name = "" if args.valid_pos_tags is None else "-" + "-".join(args.valid_pos_tags)
+    avg_example_name = "-avg" if args.average_example_scores else ""
+    initial_only_name = "-initial" if args.initial_only else ""
+    model_name = "-model" if args.use_trained_model else ""
+    out_path = (
+        Path(args.output_dir)
+        / f"{dataset_name}-{model_id}{input_type_name}{pos_name}{avg_example_name}{initial_only_name}{model_name}-eval.tsv"
+    )
     scat_splits = get_scat_splits(scores_df, target_column=args.example_target_column, eval_mode=args.eval_mode)
     all_scores = []
     for metric_name, metrics in args.processed_metrics.items():
         for metric in metrics:
-            if metric_name in (CTIMetricsEnum.RANDOM, CCIMetricsEnum.RANDOM):
-                if args.eval_mode == EvalModeEnum.CTI:
-                    kwargs = {"scores_columns": ["probability"], "do_random": True}
-                elif args.eval_mode == EvalModeEnum.CCI:
-                    kwargs = {"scores_columns": ["attention_base"], "do_random": True}
-            else:
-                kwargs = {"scores_columns": metric}
             for split_name, split in scat_splits.items():
                 logger.info(f"Evaluating {metric_name} ({metric}) on {split_name} split.")
-                scores = get_metrics_result(
-                    scores_df,
-                    split["train"],
-                    split["test"],
-                    target_column=args.example_target_column,
-                    **kwargs,
-                )
+                score_param_name = "scores_columns" if args.use_trained_model else "score_column"
+                if args.eval_mode == EvalModeEnum.CTI:
+                    if metric_name == CTIMetricsEnum.RANDOM:
+                        kwargs = {score_param_name: ["probability"], "do_random": True}
+                    else:
+                        kwargs = {score_param_name: metric}
+                elif args.eval_mode == EvalModeEnum.CCI:
+                    if metric_name == CCIMetricsEnum.RANDOM:
+                        kwargs = {score_param_name: ["attention_default"], "do_random": True}
+                    else:
+                        kwargs = {score_param_name: metric}
+                if args.use_trained_model:
+                    kwargs[score_param_name] = kwargs[score_param_name][0]
+                    scores = get_metrics_result_with_trained_model(
+                        scores_df,
+                        split["train"],
+                        split["test"],
+                        target_column=args.example_target_column,
+                        **kwargs,
+                    )
+                else:
+                    scores = get_metric_results_from_scores(
+                        scores_df,
+                        split["test"],
+                        target_column=args.example_target_column,
+                        initial_only=args.initial_only,
+                        average_example_scores=args.average_example_scores,
+                        valid_input_types=args.valid_input_types,
+                        valid_pos=args.valid_pos_tags,
+                        **kwargs,
+                    )
                 df_scores = pd.DataFrame([scores])
                 if 0 < len(metrics) < 2:
                     df_scores.insert(0, "metric", metric_name)
