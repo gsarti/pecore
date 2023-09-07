@@ -20,6 +20,8 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+FULL_DATA_SPLITS = ["scat_all", "disc_eval_mt_anaphora_all", "disc_eval_mt_lexical_choice_all"]
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
@@ -110,6 +112,11 @@ def parse_args() -> argparse.Namespace:
             " instead."
         ),
     )
+    parser.add_argument(
+        "--save_preds",
+        action="store_true",
+        help="Whether to save predictions to a file.",
+    )
     args = parser.parse_args()
     args.processed_metrics = defaultdict(list)
     if not args.metrics:
@@ -144,10 +151,11 @@ def evaluate_tagged_metrics():
     avg_example_name = "-avg" if args.average_example_scores else ""
     initial_only_name = "-initial" if args.initial_only else ""
     model_name = "-model" if args.use_trained_model else ""
-    out_path = (
-        Path(args.output_dir)
-        / f"{dataset_name}-{model_id}{input_type_name}{pos_name}{avg_example_name}{initial_only_name}{model_name}-eval.tsv"
+    root_fname = (
+        f"{dataset_name}-{model_id}{input_type_name}{pos_name}{avg_example_name}{initial_only_name}{model_name}"
     )
+    eval_fname = f"{root_fname}-eval.tsv"
+    out_path = Path(args.output_dir) / eval_fname
     scat_splits = get_scat_splits(scores_df, target_column=args.example_target_column, eval_mode=args.eval_mode)
     all_scores = []
     for metric_name, metrics in args.processed_metrics.items():
@@ -174,8 +182,9 @@ def evaluate_tagged_metrics():
                         target_column=args.example_target_column,
                         **kwargs,
                     )
+                    preds = None
                 else:
-                    scores = get_metric_results_from_scores(
+                    scores, preds = get_metric_results_from_scores(
                         scores_df,
                         split["test"],
                         target_column=args.example_target_column,
@@ -185,6 +194,18 @@ def evaluate_tagged_metrics():
                         valid_pos=args.valid_pos_tags,
                         **kwargs,
                     )
+                if preds is not None and args.save_preds and split_name in FULL_DATA_SPLITS:
+                    preds_path = Path(args.output_dir) / f"{root_fname}-{metric_name}-preds.txt"
+                    split_scores = scores_df[split["test"]]
+                    split_scores["preds"] = preds
+                    score_lines = []
+                    ex_grouped_split_scores = split_scores.groupby("example_idx")
+                    for ex_id in ex_grouped_split_scores.groups.keys():
+                        ex_df = ex_grouped_split_scores.get_group(ex_id)
+                        score_lines.append(" ".join(["1" if p else "0" for p in ex_df["preds"]]))
+                    with open(preds_path, "w") as f:
+                        f.write("\n".join(score_lines))
+
                 df_scores = pd.DataFrame([scores])
                 if 0 < len(metrics) < 2:
                     df_scores.insert(0, "metric", metric_name)

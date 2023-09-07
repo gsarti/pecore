@@ -36,6 +36,12 @@ def parse_args() -> argparse.Namespace:
         help="Path to the file containing examples to process.",
     )
     parser.add_argument(
+        "--target_tags_path",
+        type=str,
+        default=None,
+        help="Path to the file containing target tags to use for using CCI after a previous CTI step.",
+    )
+    parser.add_argument(
         "--start_idx",
         type=int,
         default=0,
@@ -119,10 +125,6 @@ def tag_cci_metrics():
     examples = [DatasetExample(**ex) for ex in examples]
     dataset_name = Path(args.examples_path).stem.split("-")[0]
     model_id = Path(args.examples_path).stem.split(".")[0][len(dataset_name) + 1 :]
-    out_path = Path(args.output_dir) / f"{dataset_name}-{model_id}-cci.tsv"
-    scores_df = None
-    if args.start_idx > 0:
-        scores_df = pd.read_csv(out_path, sep="\t")
     if args.max_idx is None:
         args.max_idx = len(examples)
     gen_kwargs = {}
@@ -133,6 +135,18 @@ def tag_cci_metrics():
     if not args.skip_token_tags:
         src_pipeline = stanza.Pipeline(lang=args.src_lang[:2], processors="tokenize,mwt,pos", download_method=None)
         tgt_pipeline = stanza.Pipeline(lang=args.tgt_lang[:2], processors="tokenize,mwt,pos", download_method=None)
+    target_tags = None
+    target_tags_id = ""
+    if args.target_tags_path is not None:
+        with open(args.target_tags_path) as f:
+            target_tags = f.read().splitlines()
+        target_tags = [[int(v) for v in l.split(" ")] for l in target_tags]
+        end_idx = args.target_tags_path.split("-").index("preds.txt")
+        target_tags_id = "-tags_" + args.target_tags_path.split("-")[end_idx - 1]
+    out_path = Path(args.output_dir) / f"{dataset_name}-{model_id}{target_tags_id}-cci.tsv"
+    scores_df = None
+    if args.start_idx > 0:
+        scores_df = pd.read_csv(out_path, sep="\t")
     for idx, ex in tqdm(enumerate(examples), total=args.max_idx):
         if idx < args.start_idx:
             continue
@@ -151,7 +165,7 @@ def tag_cci_metrics():
             impute_with_contextless_output=True,
             force_context_aware_output_prefix=True,
             gen_kwargs=gen_kwargs,
-            # TODO: Provide custom target tags to test without gold tags.
+            target_tags=target_tags[idx] if target_tags is not None else None,
         )
         if curr_df is None:
             logger.warning("Skipping example %d, no imputation scores available.", idx)

@@ -1,4 +1,4 @@
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -150,6 +150,7 @@ def get_metric_results_from_scores(
     do_random: bool = False,
     target_column: str = "is_context_sensitive",
     example_id_column: str = "example_idx",
+    cti_id_column: str = "cti_idx",
     average_example_scores: bool = True,
     pos_column: str = "pos",
     valid_pos: List[str] = None,
@@ -159,7 +160,8 @@ def get_metric_results_from_scores(
     token_column: str = "token",
     initial_char: str = "▁",
     fillna: bool = True,
-) -> Dict[str, float]:
+    std_threshold: float = 1.0,
+) -> Tuple[Dict[str, float], List[bool]]:
     if fillna:
         df = df.fillna(df.mean(numeric_only=True))
     df = df[test_mask]
@@ -170,6 +172,7 @@ def get_metric_results_from_scores(
         examples = df[example_id_column].unique()
         auprc_scores = []
         f1_scores = []
+        all_preds = []
         for example in examples:
             df_ex = df[df[example_id_column] == example]
             ex_tgt = df_ex[target_column]
@@ -184,7 +187,15 @@ def get_metric_results_from_scores(
             else:
                 ex_scores = df_ex[score_column].to_numpy()
             # Select only scores one standard deviation away from the mean
-            ex_scores_binary = ex_scores > (ex_scores.mean() + ex_scores.std())
+            ex_scores_binary = ex_scores > (ex_scores.mean() + (std_threshold * ex_scores.std()))
+            if cti_id_column in df_ex.columns:
+                # If multiple target indices are available for the same sequence, we take the max score for the metric
+                # and set prediction to True if at least one of the target indices is predicted as True
+                n_cti_idxs = len(df_ex[cti_id_column].unique())
+                if n_cti_idxs > 1:
+                    ex_scores_binary = ex_scores_binary.reshape(-1, n_cti_idxs).mean(axis=1) > 0
+                    ex_scores = ex_scores.reshape(-1, n_cti_idxs).max(axis=1)
+                    ex_tgt = ex_tgt[: len(ex_tgt) // n_cti_idxs]
 
             ex_scores = scaler.fit_transform(ex_scores.reshape(-1, 1))
             precision, recall, _ = precision_recall_curve(ex_tgt, ex_scores)
@@ -192,12 +203,13 @@ def get_metric_results_from_scores(
             f1_val = f1_score(ex_tgt, ex_scores_binary, average="macro")
             auprc_scores.append(auprc)
             f1_scores.append(f1_val)
+            all_preds += ex_scores_binary.reshape(1, -1).squeeze().tolist()
         return {
             "avg_auprc": np.mean(auprc_scores).round(4),
             "std_auprc": np.std(auprc_scores).round(4),
             "avg_macro_f1": np.mean(f1_scores).round(4),
             "std_macro_f1": np.std(f1_scores).round(4),
-        }
+        }, all_preds
     else:
         tgt = df[target_column]
         if valid_pos is not None:
@@ -209,7 +221,7 @@ def get_metric_results_from_scores(
         else:
             scores = df[score_column].to_numpy()
         # Select only scores one standard deviation away from the mean
-        scores_binary = scores > (scores.mean() + scores.std())
+        scores_binary = scores > (scores.mean() + (std_threshold * scores.std()))
         scores = scaler.fit_transform(scores.reshape(-1, 1))
         precision, recall, _ = precision_recall_curve(tgt, scores)
         auprc = auc(recall, precision)
@@ -217,4 +229,4 @@ def get_metric_results_from_scores(
         return {
             "auprc": auprc.round(4),
             "macro_f1": f1_val.round(4),
-        }
+        }, scores_binary.tolist()

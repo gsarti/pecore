@@ -320,8 +320,7 @@ python scripts/tag_cti_metrics.py \
 python scripts/tag_cti_metrics.py \
     --examples_path outputs/processed_examples/scat-mbart50-1toM-scat-target.tsv \
     --model_name context-mt/scat-mbart50-1toM-target-ctx4-cwd0-en-fr \
-    --model_type mbart50-1toM \
-    --start_idx 293
+    --model_type mbart50-1toM
 ```
 
 ### PECoRe Step 2: Contextual Cues Imputation (CCI)
@@ -350,7 +349,8 @@ python scripts/evaluate_tagged_metrics.py \
     --scores_path outputs/scores/scat-marian-small-scat-cti.tsv \
     --eval_mode cti \
     --average_example_scores \
-    --metrics random pcxmi kl_divergence
+    --metrics random pcxmi kl_divergence \
+    --save_preds
 
 python scripts/evaluate_tagged_metrics.py \
     --scores_path outputs/scores/scat-marian-small-scat-cci.tsv \

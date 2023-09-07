@@ -1,4 +1,5 @@
 import logging
+import warnings
 from itertools import product
 from typing import Any, Dict, List, Optional, Protocol, Tuple, Union
 
@@ -14,6 +15,8 @@ from .alignment_utils import get_model_cue_target_tags, tokenize_subwords
 from .data_utils import DatasetExample
 from .enums import AttributeFnEnum
 from .model_utils import has_lang_tag
+
+warnings.simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
 
 inseq_aggr_logger = logging.getLogger("inseq.data.aggregator")
 inseq_aggr_logger.setLevel(logging.WARNING)
@@ -201,12 +204,7 @@ def attribute_contrast(
         if context_separator:
             offset += 1
     curr_len = len(model.encode(target_current, as_targets=True, add_bos_token=not model_has_lang_tag).input_tokens[0])
-    start = 1
-    if has_target_context and context_separator:
-        if has_lang_tag(model):
-            start = 3
-        else:
-            start = 2
+    start = 1 if has_target_context else 0
     out = model.attribute(
         example.source_full,
         target_full,
