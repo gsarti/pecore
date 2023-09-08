@@ -82,6 +82,8 @@ class AttributeFn(Protocol):
         curr_idx: int,
         use_gold_target_current: bool,
         use_gold_target_context: bool,
+        context_separator: str,
+        use_context_separator: bool,
         **kwargs,
     ) -> pd.DataFrame:
         ...
@@ -100,10 +102,14 @@ def base_attribute_fn(
     curr_idx: int,
     use_gold_target_current: bool,
     use_gold_target_context: bool,
+    context_separator: str = "<brk>",
+    use_context_separator: bool = True,
 ) -> pd.DataFrame:
     target_current = example.gold_target_current if use_gold_target_current else example.generated_target_current
     target_context = example.gold_target_context if use_gold_target_context else example.generated_target_context
     has_target_context = target_context is not None and pd.notnull(target_context)
+    if has_target_context and use_context_separator:
+        target_context = target_context + context_separator
     out = model.attribute(
         example.source_current,
         target_current,
@@ -122,11 +128,15 @@ def top_p_attribute_fn(
     curr_idx: int,
     use_gold_target_current: bool,
     use_gold_target_context: bool,
+    context_separator: str = "<brk>",
+    use_context_separator: bool = True,
 ) -> pd.DataFrame:
     overall_df = None
     target_current = example.gold_target_current if use_gold_target_current else example.generated_target_current
     target_context = example.gold_target_context if use_gold_target_context else example.generated_target_context
     has_target_context = target_context is not None and pd.notnull(target_context)
+    if has_target_context and use_context_separator:
+        target_context = target_context + context_separator
     for top_p in [0.1, 0.3, 0.5, 0.7, 0.9]:
         out = model.attribute(
             example.source_current,
@@ -155,10 +165,14 @@ def logit_lens_attribute_fn(
     curr_idx: int,
     use_gold_target_current: bool,
     use_gold_target_context: bool,
+    context_separator: str = "<brk>",
+    use_context_separator: bool = True,
 ) -> pd.DataFrame:
     target_current = example.gold_target_current if use_gold_target_current else example.generated_target_current
     target_context = example.gold_target_context if use_gold_target_context else example.generated_target_context
     has_target_context = target_context is not None and pd.notnull(target_context)
+    if has_target_context and use_context_separator:
+        target_context = target_context + context_separator
     out = model.attribute(
         example.source_current,
         target_current,
@@ -181,6 +195,7 @@ def attribute_contrast(
     use_gold_target_current: bool,
     use_gold_target_context: bool,
     context_separator: str = "<brk>",
+    use_context_separator: bool = True,
     attributed_fn: str = "contrast_prob_diff",
     attribution_method: str = "saliency",
 ) -> Optional[FeatureAttributionOutput]:
@@ -194,7 +209,12 @@ def attribute_contrast(
     ):
         print(f"Skipping example {curr_idx}")
         return None
-    target_full = target_context + f"{context_separator} " + target_current if has_target_context else target_current
+    if not has_target_context:
+        target_full = target_current
+    elif use_context_separator:
+        target_full = target_context + f"{context_separator} " + target_current
+    else:
+        target_full = target_context + " " + target_current
     offset = 0
     if has_target_context:
         target_context_tokens = model.encode(

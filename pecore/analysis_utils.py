@@ -161,6 +161,7 @@ def get_metric_results_from_scores(
     initial_char: str = "▁",
     fillna: bool = True,
     std_threshold: float = 1.0,
+    n_random_matches_per_example: int = 1,
 ) -> Tuple[Dict[str, float], List[bool]]:
     if fillna:
         df = df.fillna(df.mean(numeric_only=True))
@@ -176,6 +177,7 @@ def get_metric_results_from_scores(
         for example in examples:
             df_ex = df[df[example_id_column] == example]
             ex_tgt = df_ex[target_column]
+
             if valid_pos is not None:
                 c_pos = list(df_ex[pos_column])
                 ex_tgt = [s if c_pos[i] in valid_pos else 0 for i, s in enumerate(ex_tgt)]
@@ -184,10 +186,15 @@ def get_metric_results_from_scores(
                 ex_tgt = [s if initial_char in c_tok[i] else 0 for i, s in enumerate(ex_tgt)]
             if do_random:
                 ex_scores = np.random.rand(len(ex_tgt))
+                threshold = ex_scores.mean() + (std_threshold * ex_scores.std())
+                ex_scores = ex_scores * threshold
+                ex_matches_pos = np.random.choice(len(ex_tgt), n_random_matches_per_example, replace=False)
+                ex_scores[ex_matches_pos] += threshold
             else:
                 ex_scores = df_ex[score_column].to_numpy()
             # Select only scores one standard deviation away from the mean
-            ex_scores_binary = ex_scores > (ex_scores.mean() + (std_threshold * ex_scores.std()))
+            threshold = ex_scores.mean() + (std_threshold * ex_scores.std())
+            ex_scores_binary = ex_scores > threshold
             if cti_id_column in df_ex.columns:
                 # If multiple target indices are available for the same sequence, we take the max score for the metric
                 # and set prediction to True if at least one of the target indices is predicted as True
@@ -217,7 +224,9 @@ def get_metric_results_from_scores(
         if initial_only:
             tgt = [s if initial_char in df[token_column][i] else 0 for i, s in enumerate(tgt)]
         if do_random:
-            scores = np.random.rand(len(tgt))
+            scores = np.random.rand(len(tgt)) * 0.5
+            matches_pos = np.random.choice(len(tgt), n_random_matches_per_example, replace=False)
+            scores[matches_pos] += 0.5
         else:
             scores = df[score_column].to_numpy()
         # Select only scores one standard deviation away from the mean
