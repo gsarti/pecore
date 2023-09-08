@@ -165,6 +165,8 @@ def tag_cti_metrics():
         curr_full_scores_df = None
         for attribute_fn_name in args.attribute_fns:
             attribute_fn_args = {}
+            if not pd.notnull(ex.gold_target_current if args.use_gold_target_current else ex.generated_target_current):
+                continue
             attribute_fn = get_attribute_fn(attribute_fn_name)
             params = getfullargspec(attribute_fn)
             if "context_separator" in params.args:

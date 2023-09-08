@@ -369,13 +369,17 @@ def get_imputation_scores_df(
     force_context_aware_output_prefix: bool = False,
     gen_kwargs: Dict[str, Any] = {},
 ) -> Optional[pd.DataFrame]:
-    if example.source_context is None or not example.source_context or not pd.notnull(example.source_context):
-        return None
     target_context = example.gold_target_context if use_gold_target_context else example.generated_target_context
     has_target_context = target_context is not None and pd.notnull(target_context)
     target_current = example.gold_target_current if use_gold_target_current else example.generated_target_current
+    if (
+        example.source_context is None
+        or not example.source_context
+        or not pd.notnull(example.source_context)
+        or not pd.notnull(target_current)
+    ):
+        return None
     target_full = target_context + f"{context_separator} " + target_current if has_target_context else target_current
-    has_target_context = target_context is not None and pd.notnull(target_context)
     use_lang_tag = has_lang_tag(model)
     lang_tag_offset = 1 if use_lang_tag else 0
     if target_tags is None:

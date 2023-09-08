@@ -358,5 +358,12 @@ python scripts/evaluate_tagged_metrics.py \
     --example_target_column is_supporting_context \
     --average_example_scores \
     --metrics random saliency_contrast_prob_diff attention_default attention_best
+
+python scripts/evaluate_tagged_metrics.py \
+    --scores_path outputs/scores/scat-marian-small-scat-target-cti.tsv \
+    --eval_mode cti \
+    --average_example_scores \
+    --metrics random pcxmi kl_divergence \
+    --save_preds
 ```
 
