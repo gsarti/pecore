@@ -450,15 +450,21 @@ def get_imputation_scores_df(
                     attribute_kwargs["contrast_sources"] = example.source_current
                     attribute_kwargs["contrast_targets"] = output_current_contrast
                     attribute_kwargs["contrast_targets_alignments"] = aligns
-                cci_out = model.attribute(
-                    example.source_full,
-                    target_full,
-                    attribute_target=True,
-                    show_progress=False,
-                    attr_pos_start=pos_start,
-                    attr_pos_end=pos_start + 1,
-                    **attribute_kwargs,
-                )
+                try:
+                    cci_out = model.attribute(
+                        example.source_full,
+                        target_full,
+                        attribute_target=True,
+                        show_progress=False,
+                        attr_pos_start=pos_start,
+                        attr_pos_end=pos_start + 1,
+                        **attribute_kwargs,
+                    )
+                except ValueError as e:
+                    logger.warning(
+                        f"Failed to attribute example {curr_idx} with method {attribution_method}. Message: {e}"
+                    )
+                    continue
                 if attributed_fn == "default":
                     aggr_out = cci_out[0].aggregate(normalize=False)
                 else:
