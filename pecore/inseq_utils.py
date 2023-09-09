@@ -480,7 +480,7 @@ def get_imputation_scores_df(
                         attr_pos_end=pos_start + 1,
                         **attribute_kwargs,
                     )
-                except ValueError as e:
+                except (ValueError, IndexError) as e:
                     logger.warning(
                         f"Failed to attribute example {curr_idx} with method {attribution_method}. Message: {e}"
                     )
