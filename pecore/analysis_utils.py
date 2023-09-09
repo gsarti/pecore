@@ -241,6 +241,7 @@ def get_metric_results_from_scores(
                 c_tok = list(df_ex[token_column])
                 ex_tgt = [s if initial_char in c_tok[i] else 0 for i, s in enumerate(ex_tgt)]
             if do_random:
+                np.random.seed(42)
                 ex_scores = np.random.rand(len(ex_tgt))
                 threshold = ex_scores.mean() + (std_threshold * ex_scores.std())
                 ex_scores = ex_scores * threshold
@@ -288,6 +289,7 @@ def get_metric_results_from_scores(
         if initial_only:
             tgt = [s if initial_char in df[token_column][i] else 0 for i, s in enumerate(tgt)]
         if do_random:
+            np.random.seed(42)
             scores = np.random.rand(len(tgt)) * 0.5
             matches_pos = np.random.choice(len(tgt), n_random_matches_per_example, replace=False)
             scores[matches_pos] += 0.5

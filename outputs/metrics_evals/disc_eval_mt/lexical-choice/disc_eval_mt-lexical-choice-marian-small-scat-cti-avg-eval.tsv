@@ -1,7 +1,7 @@
 split	metric	avg_auprc	std_auprc	avg_macro_f1	std_macro_f1	avg_mrr	std_mrr	avg_dot	std_dot
-disc_eval_mt_ok	random	0.3097	0.2994	0.4951	0.18	0.3593	0.2909	0.7638	0.6847
-disc_eval_mt_bad	random	0.318	0.2799	0.4782	0.1746	0.3906	0.306	0.6325	0.4842
-disc_eval_mt_all	random	0.304	0.2861	0.497	0.1987	0.4265	0.3094	0.6146	0.5616
+disc_eval_mt_ok	random	0.2293	0.2413	0.451	0.1546	0.4413	0.3023	0.524	0.4889
+disc_eval_mt_bad	random	0.2271	0.2274	0.4229	0.1338	0.4414	0.3157	0.471	0.5225
+disc_eval_mt_all	random	0.2282	0.2343	0.4366	0.145	0.4413	0.3091	0.4969	0.5071
 disc_eval_mt_ok	pcxmi	0.33	0.2956	0.5037	0.1886	0.5342	0.3644	0.8912	0.7938
 disc_eval_mt_bad	pcxmi	0.3308	0.3064	0.5061	0.2037	0.535	0.3619	0.7618	0.7134
 disc_eval_mt_all	pcxmi	0.3304	0.3012	0.5049	0.1965	0.5346	0.3631	0.8249	0.7565
