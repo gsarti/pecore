@@ -47,3 +47,8 @@ class CCIMetricsEnum(StrEnum):
     IXG_KL_DIV = "input_x_gradient_kl_divergence"
     ATTN_ALLMEAN = "attention_default"
     ATTN_BEST = "attention_best"
+
+
+class TaggedDatasetEnum(StrEnum):
+    SCAT = "scat"
+    DISC_EVAL_MT = "disc_eval_mt"

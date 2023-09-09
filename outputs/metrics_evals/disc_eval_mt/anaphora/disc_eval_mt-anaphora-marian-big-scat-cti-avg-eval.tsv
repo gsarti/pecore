@@ -1,28 +1,10 @@
 split	metric	avg_auprc	std_auprc	avg_macro_f1	std_macro_f1	avg_mrr	std_mrr	avg_dot	std_dot
-scat_cs_ok	random	0.1975	0.2667	0.4817	0.1373	0.2652	0.219	0.3705	0.3442
-scat_cs_bad	random	0.2179	0.2428	0.4898	0.1621	0.3395	0.2652	0.4259	0.3795
-scat_cs_all	random	0.2317	0.2883	0.5027	0.177	0.3275	0.2932	0.4221	0.38
-scat_ci_ok	random								
-scat_ci_bad	random								
-scat_ci_all	random								
-scat_ok	random	0.2384	0.3039	0.5147	0.1845	0.2973	0.2656	0.4464	0.3582
-scat_bad	random	0.2655	0.301	0.5054	0.1843	0.3739	0.3148	0.4198	0.3748
-scat_all	random	0.2354	0.2882	0.4986	0.1745	0.3105	0.2844	0.4201	0.3596
-scat_cs_ok	pcxmi	0.7074	0.3793	0.8063	0.2156	0.3395	0.2793	0.8501	0.3027
-scat_cs_bad	pcxmi	0.4404	0.3711	0.6474	0.2456	0.4093	0.3317	0.6533	0.4458
-scat_cs_all	pcxmi	0.6006	0.3982	0.7428	0.241	0.3664	0.3025	0.7714	0.3792
-scat_ci_ok	pcxmi								
-scat_ci_bad	pcxmi								
-scat_ci_all	pcxmi								
-scat_ok	pcxmi	0.7074	0.3793	0.8063	0.2156	0.3395	0.2793	0.8501	0.3027
-scat_bad	pcxmi	0.4404	0.3711	0.6474	0.2456	0.4093	0.3317	0.6533	0.4458
-scat_all	pcxmi	0.6006	0.3982	0.7428	0.241	0.3664	0.3025	0.7714	0.3792
-scat_cs_ok	kl_divergence	0.8484	0.3028	0.8835	0.177	0.3115	0.266	0.9157	0.2612
-scat_cs_bad	kl_divergence	0.5842	0.3808	0.6975	0.245	0.268	0.213	0.6619	0.4638
-scat_cs_all	kl_divergence	0.7427	0.3603	0.8091	0.2261	0.2947	0.2479	0.8142	0.3774
-scat_ci_ok	kl_divergence								
-scat_ci_bad	kl_divergence								
-scat_ci_all	kl_divergence								
-scat_ok	kl_divergence	0.8484	0.3028	0.8835	0.177	0.3115	0.266	0.9157	0.2612
-scat_bad	kl_divergence	0.5842	0.3808	0.6975	0.245	0.268	0.213	0.6619	0.4638
-scat_all	kl_divergence	0.7427	0.3603	0.8091	0.2261	0.2947	0.2479	0.8142	0.3774
+disc_eval_mt_ok	random	0.1825	0.2464	0.4787	0.1451	0.3124	0.2942	0.3756	0.3375
+disc_eval_mt_bad	random	0.2642	0.2924	0.5043	0.1798	0.326	0.2525	0.4046	0.3621
+disc_eval_mt_all	random	0.2162	0.2635	0.4924	0.159	0.3222	0.2709	0.4335	0.3972
+disc_eval_mt_ok	pcxmi	0.7074	0.3793	0.8063	0.2156	0.3395	0.2793	0.8501	0.3027
+disc_eval_mt_bad	pcxmi	0.4404	0.3711	0.6474	0.2456	0.4093	0.3317	0.6533	0.4458
+disc_eval_mt_all	pcxmi	0.6006	0.3982	0.7428	0.241	0.3664	0.3025	0.7714	0.3792
+disc_eval_mt_ok	kl_divergence	0.8484	0.3028	0.8835	0.177	0.3115	0.266	0.9157	0.2612
+disc_eval_mt_bad	kl_divergence	0.5842	0.3808	0.6975	0.245	0.268	0.213	0.6619	0.4638
+disc_eval_mt_all	kl_divergence	0.7427	0.3603	0.8091	0.2261	0.2947	0.2479	0.8142	0.3774

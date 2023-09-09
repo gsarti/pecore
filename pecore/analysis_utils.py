@@ -9,7 +9,7 @@ from sklearn.metrics import auc, f1_score, precision_recall_curve
 from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
-from .enums import EvalModeEnum
+from .enums import EvalModeEnum, TaggedDatasetEnum
 
 
 def mrr(y, pred) -> Optional[float]:
@@ -22,6 +22,21 @@ def mrr(y, pred) -> Optional[float]:
 
 def dot(y, pred) -> float:
     return np.matmul(pred, y).item()
+
+
+def get_splits(
+    dataset: TaggedDatasetEnum,
+    df: pd.DataFrame,
+    target_column: str = "is_context_sensitive",
+    eval_mode: EvalModeEnum = "cti",
+    print_stats: bool = True,
+) -> Dict[str, Dict[str, pd.Series]]:
+    if dataset == TaggedDatasetEnum.SCAT:
+        return get_scat_splits(df, target_column=target_column, eval_mode=eval_mode, print_stats=print_stats)
+    elif dataset == TaggedDatasetEnum.DISC_EVAL_MT:
+        return get_disc_eval_mt_splits(df, target_column=target_column, print_stats=print_stats)
+    else:
+        raise ValueError(f"Invalid dataset {dataset}")
 
 
 def get_scat_splits(
@@ -66,6 +81,32 @@ def get_scat_splits(
             if curr_df[split["test"]][target_column].sum() != 0:
                 filtered_splits[split_name] = split
         return filtered_splits
+    return splits
+
+
+def get_disc_eval_mt_splits(
+    df: pd.DataFrame,
+    print_stats: bool = True,
+    target_column: str = "is_context_sensitive",
+) -> pd.DataFrame:
+    curr_df = df.copy()
+    disc_eval_mt_ok = curr_df["is_example_correct"] == 1
+    disc_eval_mt_bad = curr_df["is_example_correct"] == 0
+    disc_eval_mt_all = curr_df["example_idx"] >= 0
+    splits = {
+        "disc_eval_mt_ok": {"test": disc_eval_mt_ok, "train": disc_eval_mt_all},
+        "disc_eval_mt_bad": {"test": disc_eval_mt_bad, "train": disc_eval_mt_all},
+        "disc_eval_mt_all": {"test": disc_eval_mt_all, "train": disc_eval_mt_all},
+    }
+    if print_stats:
+        for split_name, split in splits.items():
+            for fold in ["train", "test"]:
+                print(f"{split_name:<10s} {fold}:\t{str(split[fold].sum()):<4s} ex", end=",\t")
+                print(f"{target_column}: {curr_df[split[fold]][target_column].sum()} ex", end=",\t")
+                print(
+                    "is_example_correct:"
+                    f" {curr_df[split[fold]].groupby('example_idx').mean(numeric_only=True).is_example_correct.sum()} vals"
+                )
     return splits
 
 

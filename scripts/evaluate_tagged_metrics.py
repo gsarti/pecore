@@ -8,9 +8,9 @@ from pecore.analysis_utils import (
     get_cti_mix_features,
     get_metric_results_from_scores,
     get_metrics_result_with_trained_model,
-    get_scat_splits,
+    get_splits,
 )
-from pecore.enums import CCIMetricsEnum, CTIMetricsEnum, EvalModeEnum
+from pecore.enums import CCIMetricsEnum, CTIMetricsEnum, EvalModeEnum, TaggedDatasetEnum
 
 logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s  %(message)s",
@@ -19,8 +19,6 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
-
-FULL_DATA_SPLITS = ["scat_all", "disc_eval_mt_anaphora_all", "disc_eval_mt_lexical_choice_all"]
 
 
 def parse_args() -> argparse.Namespace:
@@ -55,6 +53,13 @@ def parse_args() -> argparse.Namespace:
         required=True,
         choices=[e.value for e in EvalModeEnum],
         help="Evaluation mode to use.",
+    )
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        required=True,
+        choices=[e.value for e in TaggedDatasetEnum],
+        help="Dataset to use for evaluation.",
     )
     parser.add_argument(
         "--metrics",
@@ -156,11 +161,11 @@ def evaluate_tagged_metrics():
     )
     eval_fname = f"{root_fname}-eval.tsv"
     out_path = Path(args.output_dir) / eval_fname
-    scat_splits = get_scat_splits(scores_df, target_column=args.example_target_column, eval_mode=args.eval_mode)
+    splits = get_splits(args.dataset, scores_df, target_column=args.example_target_column, eval_mode=args.eval_mode)
     all_scores = []
     for metric_name, metrics in args.processed_metrics.items():
         for metric in metrics:
-            for split_name, split in scat_splits.items():
+            for split_name, split in splits.items():
                 logger.info(f"Evaluating {metric_name} ({metric}) on {split_name} split.")
                 score_param_name = "scores_columns" if args.use_trained_model else "score_column"
                 if args.eval_mode == EvalModeEnum.CTI:
@@ -194,7 +199,7 @@ def evaluate_tagged_metrics():
                         valid_pos=args.valid_pos_tags,
                         **kwargs,
                     )
-                if preds is not None and args.save_preds and split_name in FULL_DATA_SPLITS:
+                if preds is not None and args.save_preds and split_name == f"{args.dataset}_all":
                     preds_path = Path(args.output_dir) / f"{root_fname}-{metric_name}-preds.txt"
                     split_scores = scores_df[split["test"]]
                     split_scores["preds"] = preds
