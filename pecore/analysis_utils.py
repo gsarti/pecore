@@ -1,7 +1,8 @@
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+from scipy.stats import rankdata
 from sklearn.dummy import DummyClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import auc, f1_score, precision_recall_curve
@@ -9,6 +10,18 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 from .enums import EvalModeEnum
+
+
+def mrr(y, pred) -> Optional[float]:
+    rank_descending = [x - 1 for x in rankdata(pred, method="dense")][::-1]
+    gold_tags = [i for i, val in enumerate(y) if val == 1 and i in rank_descending]
+    if not gold_tags:
+        return np.nan
+    return 1 / (min(rank_descending.index(tag) for tag in gold_tags) + 1)
+
+
+def dot(y, pred) -> float:
+    return np.matmul(pred, y).item()
 
 
 def get_scat_splits(
@@ -174,6 +187,8 @@ def get_metric_results_from_scores(
         auprc_scores = []
         f1_scores = []
         all_preds = []
+        mrr_scores = []
+        dot_scores = []
         for example in examples:
             df_ex = df[df[example_id_column] == example]
             ex_tgt = df_ex[target_column]
@@ -203,19 +218,27 @@ def get_metric_results_from_scores(
                     ex_scores_binary = ex_scores_binary.reshape(-1, n_cti_idxs).mean(axis=1) > 0
                     ex_scores = ex_scores.reshape(-1, n_cti_idxs).max(axis=1)
                     ex_tgt = ex_tgt[: len(ex_tgt) // n_cti_idxs]
-
-            ex_scores = scaler.fit_transform(ex_scores.reshape(-1, 1))
+            ex_tgt = ex_tgt.to_numpy()
+            ex_scores = scaler.fit_transform(ex_scores.reshape(-1, 1)).squeeze()
             precision, recall, _ = precision_recall_curve(ex_tgt, ex_scores)
             auprc = auc(recall, precision)
             f1_val = f1_score(ex_tgt, ex_scores_binary, average="macro")
+            mrr_val = mrr(ex_tgt, ex_scores)
+            dot_val = dot(ex_tgt, ex_scores)
             auprc_scores.append(auprc)
             f1_scores.append(f1_val)
+            mrr_scores.append(mrr_val)
+            dot_scores.append(dot_val)
             all_preds += ex_scores_binary.reshape(1, -1).squeeze().tolist()
         return {
             "avg_auprc": np.mean(auprc_scores).round(4),
             "std_auprc": np.std(auprc_scores).round(4),
             "avg_macro_f1": np.mean(f1_scores).round(4),
             "std_macro_f1": np.std(f1_scores).round(4),
+            "avg_mrr": np.nanmean(mrr_scores).round(4),
+            "std_mrr": np.nanstd(mrr_scores).round(4),
+            "avg_dot": np.mean(dot_scores).round(4),
+            "std_dot": np.std(dot_scores).round(4),
         }, all_preds
     else:
         tgt = df[target_column]
@@ -231,7 +254,8 @@ def get_metric_results_from_scores(
             scores = df[score_column].to_numpy()
         # Select only scores one standard deviation away from the mean
         scores_binary = scores > (scores.mean() + (std_threshold * scores.std()))
-        scores = scaler.fit_transform(scores.reshape(-1, 1))
+        tgt = tgt.to_numpy()[np.newaxis, :]
+        scores = scaler.fit_transform(scores)
         precision, recall, _ = precision_recall_curve(tgt, scores)
         auprc = auc(recall, precision)
         f1_val = f1_score(tgt, scores_binary, average="macro")

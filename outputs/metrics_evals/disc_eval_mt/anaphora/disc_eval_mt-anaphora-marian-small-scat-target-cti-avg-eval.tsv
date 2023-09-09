@@ -1,0 +1,28 @@
+split	metric	avg_auprc	std_auprc	avg_macro_f1	std_macro_f1	avg_mrr	std_mrr	avg_dot	std_dot
+scat_cs_ok	random	0.1771	0.2174	0.4803	0.1439	0.2876	0.2504	0.3696	0.3175
+scat_cs_bad	random	0.26	0.2881	0.4986	0.1661	0.3229	0.2583	0.4413	0.3952
+scat_cs_all	random	0.2336	0.2794	0.4915	0.1562	0.3332	0.2811	0.4327	0.3498
+scat_ci_ok	random								
+scat_ci_bad	random								
+scat_ci_all	random								
+scat_ok	random	0.2195	0.2839	0.5114	0.182	0.334	0.3031	0.4187	0.3258
+scat_bad	random	0.25	0.2677	0.4862	0.1585	0.3049	0.2135	0.4612	0.3827
+scat_all	random	0.2476	0.2912	0.5131	0.1859	0.3109	0.2787	0.4512	0.367
+scat_cs_ok	pcxmi	0.7385	0.3701	0.8243	0.2101	0.3214	0.289	0.8449	0.3068
+scat_cs_bad	pcxmi	0.3828	0.3507	0.5814	0.223	0.4239	0.322	0.4894	0.449
+scat_cs_all	pcxmi	0.5856	0.4025	0.7198	0.247	0.3637	0.3072	0.692	0.4139
+scat_ci_ok	pcxmi								
+scat_ci_bad	pcxmi								
+scat_ci_all	pcxmi								
+scat_ok	pcxmi	0.7385	0.3701	0.8243	0.2101	0.3214	0.289	0.8449	0.3068
+scat_bad	pcxmi	0.3828	0.3507	0.5814	0.223	0.4239	0.322	0.4894	0.449
+scat_all	pcxmi	0.5856	0.4025	0.7198	0.247	0.3637	0.3072	0.692	0.4139
+scat_cs_ok	kl_divergence	0.8645	0.2865	0.8853	0.1754	0.3752	0.3248	0.9302	0.2459
+scat_cs_bad	kl_divergence	0.5044	0.383	0.6605	0.2394	0.2847	0.2144	0.5748	0.4468
+scat_cs_all	kl_divergence	0.7096	0.3764	0.7886	0.2336	0.3379	0.288	0.7774	0.389
+scat_ci_ok	kl_divergence								
+scat_ci_bad	kl_divergence								
+scat_ci_all	kl_divergence								
+scat_ok	kl_divergence	0.8645	0.2865	0.8853	0.1754	0.3752	0.3248	0.9302	0.2459
+scat_bad	kl_divergence	0.5044	0.383	0.6605	0.2394	0.2847	0.2144	0.5748	0.4468
+scat_all	kl_divergence	0.7096	0.3764	0.7886	0.2336	0.3379	0.288	0.7774	0.389
