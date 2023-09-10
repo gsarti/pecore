@@ -39,6 +39,15 @@ def get_splits(
         raise ValueError(f"Invalid dataset {dataset}")
 
 
+def get_max_idx_for_missing_examples(dataset: TaggedDatasetEnum) -> Optional[int]:
+    if dataset == TaggedDatasetEnum.SCAT:
+        return 500
+    elif dataset == TaggedDatasetEnum.DISC_EVAL_MT:
+        return 200
+    else:
+        return None
+
+
 def get_scat_splits(
     df: pd.DataFrame,
     print_stats: bool = True,
@@ -217,6 +226,7 @@ def get_metric_results_from_scores(
     std_threshold: float = 1.0,
     n_random_matches_per_example: int = 1,
     special_tokens_to_remove: List[str] = None,
+    max_idx_for_missing_examples: Optional[int] = None,
 ) -> Tuple[Dict[str, float], List[bool]]:
     if fillna:
         df = df.fillna(df.mean(numeric_only=True))
@@ -225,13 +235,22 @@ def get_metric_results_from_scores(
         df = df[df[input_type_column].isin(valid_input_types)]
     scaler = MinMaxScaler()
     if average_example_scores:
-        examples = df[example_id_column].unique()
+        available_examples = df[example_id_column].unique()
+        if max_idx_for_missing_examples:
+            examples = list(range(max_idx_for_missing_examples))
+        else:
+            examples = available_examples
         auprc_scores = []
         f1_scores = []
         all_preds = []
         mrr_scores = []
         dot_scores = []
         for example in examples:
+            if example not in available_examples:
+                # Only MRR takes into account examples that weren't computed because an attribution target wasn't
+                # identified in the previous step - should be used as preferred metric for CCI
+                mrr_scores.append(0)
+                continue
             df_ex = df[df[example_id_column] == example]
             ex_tgt = df_ex[target_column]
             c_tok = list(df_ex[token_column])

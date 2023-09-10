@@ -1,0 +1,5 @@
+###############################
+# Git Large File System (LFS) #
+###############################
+
+outputs/scores/scat/*.tsv filter=lfs diff=lfs merge=lfs -text

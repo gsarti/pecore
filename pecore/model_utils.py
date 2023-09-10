@@ -16,6 +16,8 @@ from transformers import (
 @dataclass
 class ModelConfig:
     batch_size: int
+    num_layers: int
+    num_heads: int
     lang_map: Dict[str, str] = field(default_factory=dict)
 
 

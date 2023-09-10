@@ -1,9 +1,15 @@
 marian-small:
   batch_size: 8
+  num_layers: 6
+  num_heads: 8
 marian-big:
   batch_size: 4
+  num_layers: 6
+  num_heads: 16
 mbart50-1toM:
   batch_size: 1
+  num_layers: 12
+  num_heads: 16
   lang_map:
     eng: en_XX
     fra: fr_XX

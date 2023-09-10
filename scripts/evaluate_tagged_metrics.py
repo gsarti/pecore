@@ -6,11 +6,13 @@ from pathlib import Path
 import pandas as pd
 from pecore.analysis_utils import (
     get_cti_mix_features,
+    get_max_idx_for_missing_examples,
     get_metric_results_from_scores,
     get_metrics_result_with_trained_model,
     get_splits,
 )
 from pecore.enums import CCIMetricsEnum, CTIMetricsEnum, EvalModeEnum, TaggedDatasetEnum
+from pecore.model_utils import get_model_attribute
 
 logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s  %(message)s",
@@ -69,16 +71,10 @@ def parse_args() -> argparse.Namespace:
         help="Metrics to evaluate.",
     )
     parser.add_argument(
-        "--model_n_layers",
-        type=int,
-        default=6,
-        help="Number of layers of the model.",
-    )
-    parser.add_argument(
-        "--model_n_heads",
-        type=int,
-        default=8,
-        help="Number of layers of the model.",
+        "--model_type",
+        type=str,
+        required=True,
+        help="Model type.",
     )
     parser.add_argument(
         "--has_target_context",
@@ -136,17 +132,19 @@ def parse_args() -> argparse.Namespace:
             args.metrics = [e.value for e in CTIMetricsEnum]
         elif args.eval_mode == EvalModeEnum.CCI:
             args.metrics = [e.value for e in CCIMetricsEnum]
+    args.model_num_layers = get_model_attribute(args.model_type, "num_layers")
+    args.model_num_heads = get_model_attribute(args.model_type, "num_heads")
     for metric in args.metrics:
         if (args.eval_mode == EvalModeEnum.CTI.value and metric not in [e.value for e in CTIMetricsEnum]) or (
             args.eval_mode == EvalModeEnum.CCI.value and metric not in [e.value for e in CCIMetricsEnum]
         ):
             raise ValueError(f"Metric {metric} is not valid for evaluation mode {args.eval_mode}.")
         if metric == CTIMetricsEnum.CTI_MIX:
-            cti_mix = get_cti_mix_features(args.model_n_layers, args.has_target_context)
+            cti_mix = get_cti_mix_features(args.model_num_layers, args.has_target_context)
             args.processed_metrics[CTIMetricsEnum.CTI_MIX].append(cti_mix)
         elif metric == CCIMetricsEnum.ATTN_BEST:
-            for l in range(args.model_n_layers):
-                for h in range(args.model_n_heads):
+            for l in range(args.model_num_layers):
+                for h in range(args.model_num_heads):
                     args.processed_metrics[CCIMetricsEnum.ATTN_BEST].append([f"attention_{l}l_{h}h"])
         else:
             args.processed_metrics[metric].append([metric])
@@ -205,6 +203,14 @@ def evaluate_tagged_metrics():
                         valid_input_types=args.valid_input_types,
                         valid_pos=args.valid_pos_tags,
                         special_tokens_to_remove=args.special_tokens_to_remove,
+                        # CCI might have some missing examples in the dataframe due to CTI not identifying a location
+                        # for attribution. In this case, we need to know the maximum index of the examples to be able to
+                        # assign a zero score to missing ones.
+                        max_idx_for_missing_examples=(
+                            get_max_idx_for_missing_examples(args.dataset)
+                            if args.eval_mode == EvalModeEnum.CCI
+                            else None
+                        ),
                         **kwargs,
                     )
                 if preds is not None and args.save_preds and split_name == f"{args.dataset}_all":
