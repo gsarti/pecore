@@ -118,6 +118,13 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--special_tokens_to_remove",
+        type=str,
+        nargs="+",
+        default=["fr_XX"],
+        help="Special tokens to remove from the input for measuring scores.",
+    )
+    parser.add_argument(
         "--save_preds",
         action="store_true",
         help="Whether to save predictions to a file.",
@@ -197,6 +204,7 @@ def evaluate_tagged_metrics():
                         average_example_scores=args.average_example_scores,
                         valid_input_types=args.valid_input_types,
                         valid_pos=args.valid_pos_tags,
+                        special_tokens_to_remove=args.special_tokens_to_remove,
                         **kwargs,
                     )
                 if preds is not None and args.save_preds and split_name == f"{args.dataset}_all":
