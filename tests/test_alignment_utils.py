@@ -1,9 +1,10 @@
 from typing import Dict
 
-import inseq
-from inseq.models import HuggingfaceEncoderDecoderModel
 from pecore.alignment_utils import get_model_cue_target_tags, tokenize_subwords
 from pytest import fixture
+
+import inseq
+from inseq.models import HuggingfaceEncoderDecoderModel
 
 
 @fixture(scope="session")

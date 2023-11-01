@@ -1,16 +1,16 @@
-.PHONY: quality style
+.PHONY: check fix
 
 # Check that source code meets quality standards
 
-quality:
-	black --diff --check --config pyproject.toml ./
+check:
+	ruff format --check --config pyproject.toml ./
 	ruff  --no-fix --config pyproject.toml ./
 
 # Format source code automatically
 
-style:
-	black --config pyproject.toml ./
-	ruff --config pyproject.toml ./
+fix:
+	ruff format --config pyproject.toml ./
+	ruff check --config pyproject.toml ./
 
 # Setup the library
 

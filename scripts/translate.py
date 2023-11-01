@@ -104,7 +104,7 @@ def translate():
             context_word_dropout=args.context_word_dropout,
         )
     else:
-        model_id = args.model_type
+        model_id = args.model_id
     if args.model_name is None:
         model_name = get_model_name(
             model_id=model_id,

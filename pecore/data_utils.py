@@ -127,6 +127,7 @@ class DatasetExample:
     generated_target_full: Optional[str] = None
     generated_target_current: Optional[str] = None
     generated_target_context: Optional[str] = None
+    generated_target_current_noctx: Optional[str] = None
 
 
 @dataclass

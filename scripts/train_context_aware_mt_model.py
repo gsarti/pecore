@@ -27,6 +27,7 @@ from pathlib import Path
 from random import randint, random, sample
 
 import datasets
+import evaluate
 import numpy as np
 import torch
 import transformers
@@ -55,8 +56,6 @@ from transformers import (
     get_scheduler,
 )
 from transformers.utils import get_full_repo_name
-
-import evaluate
 
 logger = get_logger(__name__)
 

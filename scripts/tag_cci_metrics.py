@@ -2,7 +2,6 @@ import argparse
 import logging
 from pathlib import Path
 
-import inseq
 import pandas as pd
 import stanza
 from pecore.alignment_utils import get_match_from_contrastive_pair, get_model_cue_target_tags, get_model_lang_feats
@@ -11,6 +10,8 @@ from pecore.enums import ModelTypeEnum
 from pecore.inseq_utils import get_imputation_scores_df
 from pecore.model_utils import get_lang_from_model_type, has_lang_tag
 from tqdm import tqdm
+
+import inseq
 
 logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s  %(message)s",
@@ -227,12 +228,14 @@ def tag_cci_metrics():
                 logger.error(f"Error tagging cue tokens for example {idx}: {e}")
                 continue
         # Add an is_example_correct column to the scores file, marking examples where the model correctly disambiguates the
-        # gender in the target sentence. To analyze data folds and not as feature, since it is not available in test.
+        # gender in the target sentence and a is_example_flipped column to mark examples where the presence of context drives
+        # correct disambiguation. To analyze data folds and not as feature, since it is not available in test.
         if not args.skip_example_status:
             if (
                 ex.gold_target_current is None
                 or ex.generated_target_current is None
                 or ex.gold_target_current_contrast is None
+                or ex.generated_target_current_noctx is None
             ):
                 raise ValueError(
                     "A generated target and a minimal pair of original and contrastive gold targets are required to"
@@ -245,6 +248,16 @@ def tag_cci_metrics():
             )
             is_correct = 1 if sum(correct_matches) > 0 else 0
             curr_df["is_example_correct"] = is_correct
+            is_flipped = 0
+            if is_correct:
+                no_ctx_matches = get_match_from_contrastive_pair(
+                    ref_text=ex.gold_target_current,
+                    contrast_ref_text=ex.gold_target_current_contrast,
+                    pred_text=ex.generated_target_current_noctx,
+                )
+                if sum(no_ctx_matches) == 0:
+                    is_flipped = 1
+            curr_df["is_example_flipped"] = is_flipped
         if scores_df is None:
             scores_df = curr_df
         else:

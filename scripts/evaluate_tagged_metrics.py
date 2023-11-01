@@ -23,6 +23,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def is_tested_split(split_name: str):
+    return split_name in ["scat_cs_all", "scat_cs_flipped", "disc_eval_mt_all", "disc_eval_mt_flipped"]
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -106,6 +110,12 @@ def parse_args() -> argparse.Namespace:
         help="Valid POS tags for contribution to consider. Default all.",
     )
     parser.add_argument(
+        "--metric_std_threshold",
+        type=float,
+        default=1.0,
+        help="Threshold for standard deviation of metric values to consider a metric as valid.",
+    )
+    parser.add_argument(
         "--average_example_scores",
         action="store_true",
         help=(
@@ -124,6 +134,9 @@ def parse_args() -> argparse.Namespace:
         "--save_preds",
         action="store_true",
         help="Whether to save predictions to a file.",
+    )
+    parser.add_argument(
+        "--save_per_example_scores", action="store_true", help="Whether to save per example scores to a dataframe."
     )
     args = parser.parse_args()
     args.processed_metrics = defaultdict(list)
@@ -154,6 +167,15 @@ def parse_args() -> argparse.Namespace:
 def evaluate_tagged_metrics():
     args = parse_args()
     scores_df = pd.read_csv(args.scores_path, sep="\t")
+    if CTIMetricsEnum.CTX_SALIENCY in args.metrics:
+        if "tgt_ctx_attr" in scores_df.columns:
+            scores_df["ctx_saliency"] = scores_df["tgt_ctx_attr"] + scores_df["src_ctx_attr"]
+        else:
+            scores_df["ctx_saliency"] = scores_df["src_ctx_attr"]
+    if CTIMetricsEnum.LIKELIHOOD_RATIO in args.metrics:
+        scores_df["likelihood_ratio"] = scores_df["contrast_prob"] / (
+            scores_df["probability"] + scores_df["contrast_prob"]
+        )
     dataset_name = Path(args.scores_path).stem.split("-")[0]
     model_id = Path(args.scores_path).stem.split(".")[0][len(dataset_name) + 1 :]
     input_type_name = "" if args.valid_input_types == ["S", "T"] else "-" + "-".join(args.valid_input_types)
@@ -161,8 +183,10 @@ def evaluate_tagged_metrics():
     avg_example_name = "-avg" if args.average_example_scores else ""
     initial_only_name = "-initial" if args.initial_only else ""
     model_name = "-model" if args.use_trained_model else ""
+    std_name = f"-std{args.metric_std_threshold:.1f}" if args.metric_std_threshold != 1.0 else ""
     root_fname = (
-        f"{dataset_name}-{model_id}{input_type_name}{pos_name}{avg_example_name}{initial_only_name}{model_name}"
+        f"{dataset_name}-{model_id}{input_type_name}{pos_name}{avg_example_name}"
+        f"{initial_only_name}{std_name}{model_name}"
     )
     eval_fname = f"{root_fname}-eval.tsv"
     out_path = Path(args.output_dir) / eval_fname
@@ -194,7 +218,7 @@ def evaluate_tagged_metrics():
                     )
                     preds = None
                 else:
-                    scores, preds = get_metric_results_from_scores(
+                    scores, preds, per_example_scores = get_metric_results_from_scores(
                         scores_df,
                         split["test"],
                         target_column=args.example_target_column,
@@ -203,6 +227,7 @@ def evaluate_tagged_metrics():
                         valid_input_types=args.valid_input_types,
                         valid_pos=args.valid_pos_tags,
                         special_tokens_to_remove=args.special_tokens_to_remove,
+                        std_threshold=args.metric_std_threshold,
                         # CCI might have some missing examples in the dataframe due to CTI not identifying a location
                         # for attribution. In this case, we need to know the maximum index of the examples to be able to
                         # assign a zero score to missing ones.
@@ -213,7 +238,7 @@ def evaluate_tagged_metrics():
                         ),
                         **kwargs,
                     )
-                if preds is not None and args.save_preds and split_name == f"{args.dataset}_all":
+                if preds is not None and args.save_preds and split_name.endswith("all"):
                     preds_path = Path(args.output_dir) / f"{root_fname}-{metric_name}-preds.txt"
                     split_scores = scores_df[split["test"]]
                     split_scores["preds"] = preds
@@ -224,7 +249,14 @@ def evaluate_tagged_metrics():
                         score_lines.append(" ".join(["1" if p else "0" for p in ex_df["preds"]]))
                     with open(preds_path, "w") as f:
                         f.write("\n".join(score_lines))
-
+                if per_example_scores is not None and args.save_per_example_scores and is_tested_split(split_name):
+                    id_split = "all" if split_name.endswith("all") else "flipped"
+                    per_example_scores_path = (
+                        Path(args.output_dir)
+                        / "all_metric_scores"
+                        / f"{root_fname}-{metric_name}-{id_split}-scores.tsv"
+                    )
+                    pd.DataFrame(per_example_scores).to_csv(per_example_scores_path, sep="\t", index=False)
                 df_scores = pd.DataFrame([scores])
                 if 0 < len(metrics) < 2:
                     df_scores.insert(0, "metric", metric_name)

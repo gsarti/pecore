@@ -1,19 +1,17 @@
 {
     "[python]": {
         "editor.formatOnSave": true,
+        "editor.defaultFormatter": "charliermarsh.ruff",
         "editor.codeActionsOnSave": {
-            "source.fixAll.ruff": true,
-            "source.organizeImports.ruff": true
+            "source.fixAll": true,
+            "source.organizeImports": true
         },
-        "editor.defaultFormatter": "ms-python.black-formatter",
     },
-    "python.analysis.typeCheckingMode": "off",
-    "ruff.args": [
-        "--config=/home/gsarti/projects/pecore/pyproject.toml"
-    ],
-    "python.testing.pytestArgs": [
-        "tests"
-    ],
+    "python.testing.pytestArgs": [],
     "python.testing.unittestEnabled": false,
     "python.testing.pytestEnabled": true,
+    "debug.allowBreakpointsEverywhere": true,
+    "ruff.lint.args": [
+        "--config=/home/gsarti/projects/pecore/pyproject.toml"
+    ],
 }

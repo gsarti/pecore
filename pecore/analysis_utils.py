@@ -2,7 +2,7 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-from scipy.stats import rankdata
+from scipy.stats import rankdata, sem, t
 from sklearn.dummy import DummyClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import auc, f1_score, precision_recall_curve
@@ -22,6 +22,14 @@ def mrr(y, pred) -> Optional[float]:
 
 def dot(y, pred) -> float:
     return np.matmul(pred, y).item()
+
+
+def conf_bounds(data, confidence=0.95):
+    a = 1.0 * np.array(data)
+    n = len(a)
+    m, se = np.mean(a), sem(a)
+    h = se * t.ppf((1 + confidence) / 2.0, n - 1)
+    return round(m - h, 4), round(m + h, 4)
 
 
 def get_splits(
@@ -57,23 +65,23 @@ def get_scat_splits(
     curr_df = df.copy()
     scat_cs = curr_df["example_idx"] < 250
     scat_ci = curr_df["example_idx"] >= 250
-    scat_ok = curr_df["is_example_correct"] == 1
-    scat_bad = curr_df["is_example_correct"] == 0
     scat_cs_ok = (curr_df["example_idx"] < 250) & (curr_df["is_example_correct"] == 1)
-    scat_ci_ok = (curr_df["example_idx"] >= 250) & (curr_df["is_example_correct"] == 1)
     scat_cs_bad = (curr_df["example_idx"] < 250) & (curr_df["is_example_correct"] == 0)
-    scat_ci_bad = (curr_df["example_idx"] >= 250) & (curr_df["is_example_correct"] == 0)
-    scat_all = curr_df["example_idx"] >= 0
+    scat_cs_flipped = (curr_df["example_idx"] < 250) & (curr_df["is_example_flipped"] == 1)
+    scat_cs_stable_ok = (
+        (curr_df["example_idx"] < 250) & (curr_df["is_example_flipped"] == 0) & (curr_df["is_example_correct"] == 1)
+    )
+    scat_cs_stable_bad = (
+        (curr_df["example_idx"] < 250) & (curr_df["is_example_flipped"] == 0) & (curr_df["is_example_correct"] == 0)
+    )
     splits = {
         "scat_cs_ok": {"test": scat_cs_ok, "train": scat_cs},
         "scat_cs_bad": {"test": scat_cs_bad, "train": scat_cs},
         "scat_cs_all": {"test": scat_cs, "train": scat_cs},
-        "scat_ci_ok": {"test": scat_ci_ok, "train": scat_ci},
-        "scat_ci_bad": {"test": scat_ci_bad, "train": scat_ci},
         "scat_ci_all": {"test": scat_ci, "train": scat_ci},
-        "scat_ok": {"test": scat_ok, "train": scat_all},
-        "scat_bad": {"test": scat_bad, "train": scat_all},
-        "scat_all": {"test": scat_all, "train": scat_all},
+        "scat_cs_flipped": {"test": scat_cs_flipped, "train": scat_cs},
+        "scat_cs_stable_ok": {"test": scat_cs_stable_ok, "train": scat_cs},
+        "scat_cs_stable_bad": {"test": scat_cs_stable_bad, "train": scat_cs},
     }
     if print_stats:
         for split_name, split in splits.items():
@@ -101,11 +109,17 @@ def get_disc_eval_mt_splits(
     curr_df = df.copy()
     disc_eval_mt_ok = curr_df["is_example_correct"] == 1
     disc_eval_mt_bad = curr_df["is_example_correct"] == 0
+    disc_eval_mt_flipped = curr_df["is_example_flipped"] == 1
+    disc_eval_mt_stable_ok = (curr_df["is_example_flipped"] == 0) & (curr_df["is_example_correct"] == 1)
+    disc_eval_mt_stable_bad = (curr_df["is_example_flipped"] == 0) & (curr_df["is_example_correct"] == 0)
     disc_eval_mt_all = curr_df["example_idx"] >= 0
     splits = {
         "disc_eval_mt_ok": {"test": disc_eval_mt_ok, "train": disc_eval_mt_all},
         "disc_eval_mt_bad": {"test": disc_eval_mt_bad, "train": disc_eval_mt_all},
         "disc_eval_mt_all": {"test": disc_eval_mt_all, "train": disc_eval_mt_all},
+        "disc_eval_mt_flipped": {"test": disc_eval_mt_flipped, "train": disc_eval_mt_all},
+        "disc_eval_mt_stable_ok": {"test": disc_eval_mt_stable_ok, "train": disc_eval_mt_all},
+        "disc_eval_mt_stable_bad": {"test": disc_eval_mt_stable_bad, "train": disc_eval_mt_all},
     }
     if print_stats:
         for split_name, split in splits.items():
@@ -249,7 +263,7 @@ def get_metric_results_from_scores(
             if example not in available_examples:
                 # Only MRR takes into account examples that weren't computed because an attribution target wasn't
                 # identified in the previous step - should be used as preferred metric for CCI
-                mrr_scores.append(0)
+                # mrr_scores.append(0)
                 continue
             df_ex = df[df[example_id_column] == example]
             ex_tgt = df_ex[target_column]
@@ -305,16 +319,37 @@ def get_metric_results_from_scores(
             mrr_scores.append(mrr_val)
             dot_scores.append(dot_val)
             all_preds += ex_scores_binary.reshape(1, -1).squeeze().tolist()
-        return {
-            "avg_auprc": np.mean(auprc_scores).round(4),
-            "std_auprc": np.std(auprc_scores).round(4),
-            "avg_macro_f1": np.mean(f1_scores).round(4),
-            "std_macro_f1": np.std(f1_scores).round(4),
-            "avg_mrr": np.nanmean(mrr_scores).round(4),
-            "std_mrr": np.nanstd(mrr_scores).round(4),
-            "avg_dot": np.mean(dot_scores).round(4),
-            "std_dot": np.std(dot_scores).round(4),
-        }, all_preds
+        auprc_low, auprc_high = conf_bounds(auprc_scores)
+        f1_low, f1_high = conf_bounds(f1_scores)
+        mrr_low, mrr_high = conf_bounds(mrr_scores)
+        dot_low, dot_high = conf_bounds(dot_scores)
+        return (
+            {
+                "avg_auprc": np.mean(auprc_scores).round(4),
+                "avg_macro_f1": np.mean(f1_scores).round(4),
+                "avg_mrr": np.nanmean(mrr_scores).round(4),
+                "avg_dot": np.mean(dot_scores).round(4),
+                "auprc_low": auprc_low,
+                "auprc_high": auprc_high,
+                "std_auprc": np.std(auprc_scores).round(4),
+                "f1_low": f1_low,
+                "f1_high": f1_high,
+                "std_macro_f1": np.std(f1_scores).round(4),
+                "mrr_low": mrr_low,
+                "mrr_high": mrr_high,
+                "std_mrr": np.nanstd(mrr_scores).round(4),
+                "dot_low": dot_low,
+                "dot_high": dot_high,
+                "std_dot": np.std(dot_scores).round(4),
+            },
+            all_preds,
+            {
+                "auprc": list(auprc_scores),
+                "macro_f1": list(f1_scores),
+                "mrr": list(mrr_scores),
+                "dot": list(dot_scores),
+            },
+        )
     else:
         tgt = df[target_column]
         if valid_pos is not None:
@@ -330,12 +365,16 @@ def get_metric_results_from_scores(
             scores = df[score_column].to_numpy()
         # Select only scores one standard deviation away from the mean
         scores_binary = scores > (scores.mean() + (std_threshold * scores.std()))
-        tgt = tgt.to_numpy()[np.newaxis, :]
-        scores = scaler.fit_transform(scores)
+        tgt = tgt.to_numpy()
+        scores = scaler.fit_transform(scores.reshape(-1, 1)).squeeze()
         precision, recall, _ = precision_recall_curve(tgt, scores)
         auprc = auc(recall, precision)
         f1_val = f1_score(tgt, scores_binary, average="macro")
-        return {
-            "auprc": auprc.round(4),
-            "macro_f1": f1_val.round(4),
-        }, scores_binary.tolist()
+        return (
+            {
+                "auprc": auprc.round(4),
+                "macro_f1": f1_val.round(4),
+            },
+            scores_binary.tolist(),
+            None,
+        )

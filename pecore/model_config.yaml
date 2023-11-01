@@ -13,3 +13,18 @@ mbart50-1toM:
   lang_map:
     eng: en_XX
     fra: fr_XX
+    ita: it_IT
+    nld: nl_XX
+    ara: ar_AR
+    tur: tr_TR
+nllb:
+  batch_size: 1
+  num_layers: 12
+  num_heads: 16
+  lang_map:
+    eng: eng_Latn
+    fra: fra_Latn
+    ita: ita_Latn
+    nld: nld_Latn
+    ara: ara_Arab
+    tur: tur_Latn

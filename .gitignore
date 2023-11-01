@@ -1,4 +1,6 @@
 old/
+outputs/divemt_cli_viz
+notebooks/
 .vscode/launch.json
 
 # Byte-compiled / optimized / DLL files

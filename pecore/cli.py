@@ -3,12 +3,12 @@ import logging
 import warnings
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-import inseq
 import torch
+from rich.console import Console
+
+import inseq
 from inseq import AttributionModel
 from inseq.data import FeatureAttributionOutput, FeatureAttributionSequenceOutput
-from rich import print as rprint
-
 from pecore.alignment_utils import tokenize_subwords
 from pecore.data_utils import PECoReExample
 from pecore.enums import CTIMetricsEnum, ModelTypeEnum
@@ -164,6 +164,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--special_characters", type=str, nargs="+", default=["▁"], help="Characters to replace with spaces in viz."
     )
+    parser.add_argument(
+        "--viz_path",
+        type=str,
+        default="pecore_viz.html",
+        help="Path to save the visualization to. If not specified, the visualization is printed to stdout.",
+    )
     args = parser.parse_args()
     if args.ctx_break not in args.input:
         raise ValueError(
@@ -175,6 +181,7 @@ def parse_args() -> argparse.Namespace:
 
 def visualize_procedure_details(
     args: argparse.Namespace,
+    console: Console,
     input_context: str,
     input_current: str,
     output_context: str,
@@ -213,14 +220,14 @@ def visualize_procedure_details(
         extra_params_comment += (
             f"\nUsing language tags for model type '{args.model_type}' ({args.input_lang} -> {args.output_lang})."
         )
-    rprint(
+    console.print(
         f"Context with [bold green]contextual cues[/bold green] ({cci_threshold_comment}) followed by output"
         f" sentence\nwith [bold magenta]context-sensitive target spans[/bold magenta] ({cti_threshold_comment}):\n"
     )
-    rprint(
-        f"[white][bold]Input context:[/bold]\t{input_context}\n[bold]Input"
+    console.print(
+        f"[bold]Input context:[/bold]\t{input_context}\n[bold]Input"
         f" current:[/bold]\t{input_current}{output_context_comment}\n[bold]Context-aware output:[/bold]\t{output_full}"
-        f"{extra_params_comment}[/white]"
+        f"{extra_params_comment}"
     )
 
 
@@ -287,12 +294,14 @@ def scores_to_rank(
     all_idxs_and_scores = []
     all_filtered_scores = []
     for scores in all_scores:
-        l_scores = scores.tolist()
         if excluded_tokens and tokens:
-            scores = torch.tensor([s for idx, s in enumerate(l_scores) if tokens[idx] not in excluded_tokens])
+            t_scores = torch.tensor([s for idx, s in enumerate(l_scores) if tokens[idx] not in excluded_tokens])
             l_scores = scores.tolist()
-        all_filtered_scores.append(scores)
-        idxs_and_scores = sorted([(i, x) for i, x in enumerate(l_scores)], key=lambda x: abs(x[1]), reverse=True)
+        else:
+            t_scores = scores
+            l_scores = scores.tolist()
+        all_filtered_scores.append(t_scores)
+        idxs_and_scores = sorted(enumerate(l_scores), key=lambda x: abs(x[1]), reverse=True)
         all_idxs_and_scores.append(idxs_and_scores[:top_k])
     if threshold:
         all_scores_tensor = torch.cat(all_filtered_scores)
@@ -411,30 +420,31 @@ def visualize_pecore_example(
     cci_inputs_idxs_and_scores: List[Tuple[int, float]],
     cci_outputs_idxs_and_scores: Optional[List[Tuple[int, float]]],
     has_output_context: bool,
+    console: Console,
 ) -> None:
     input_context_tokens = input_context_tokens.copy()
     output_current_tokens = output_current_tokens.copy()
-    output_current_tokens[cti_tok_idx] = (
-        f"[/white][bold magenta]{output_current_tokens[cti_tok_idx]}({cti_tok_score:.3f})[/bold magenta][white]"
-    )
+    output_current_tokens[
+        cti_tok_idx
+    ] = f"[bold magenta]{output_current_tokens[cti_tok_idx]}({cti_tok_score:.3f})[/bold magenta]"
     for cci_tok_idx, cci_tok_score in cci_inputs_idxs_and_scores:
-        input_context_tokens[cci_tok_idx] = (
-            f"[/white][bold green]{input_context_tokens[cci_tok_idx]}({cci_tok_score:.3f})[/bold green][white]"
-        )
+        input_context_tokens[
+            cci_tok_idx
+        ] = f"[bold green]{input_context_tokens[cci_tok_idx]}({cci_tok_score:.3f})[/bold green]"
     output_context_comment = ""
     if has_output_context:
         output_context_tokens = output_context_tokens.copy()
         for cci_tok_idx, cci_tok_score in cci_outputs_idxs_and_scores:
-            output_context_tokens[cci_tok_idx] = (
-                f"[/white][bold green]{output_context_tokens[cci_tok_idx]}({cci_tok_score:.3f})[/bold green][white]"
-            )
+            output_context_tokens[
+                cci_tok_idx
+            ] = f"[bold green]{output_context_tokens[cci_tok_idx]}({cci_tok_score:.3f})[/bold green]"
         output_context_comment = f"\n[bold]Output context:[/bold]\t{''.join(output_context_tokens)}"
-    rprint(
+    console.print(
         f"\n#{example_idx}. (CTI |{cti_metric}| > {cti_scores_threshold:.2f}, "
         f"CCI |{cci_metric}| > {cci_scores_threshold:.2f})"
-        f"\n[white][bold]Contextless output:[/bold]\t{output_current_contrast}[/white]"
-        f"\n[white][bold]Current output:[/bold]\t{''.join(output_current_tokens)}[/white]"
-        f"\n[white][bold]Input context:[/bold]\t{''.join(input_context_tokens)}{output_context_comment}"
+        f"\n[bold]Contextless output:[/bold]\t{output_current_contrast}"
+        f"\n[bold]Current output:[/bold]\t{''.join(output_current_tokens)}"
+        f"\n[bold]Input context:[/bold]\t{''.join(input_context_tokens)}{output_context_comment}"
     )
 
 
@@ -472,8 +482,10 @@ def pecore_viz():
         excluded_tokens=args.excluded_tokens,
         special_characters=args.special_characters,
     )
+    console = Console(record=True)
     visualize_procedure_details(
         args=args,
+        console=console,
         input_context=ex.input_context,
         input_current=ex.input_current,
         output_context=ex.output_context,
@@ -565,7 +577,10 @@ def pecore_viz():
             cci_inputs_idxs_and_scores=cci_inputs_idxs_and_scores,
             cci_outputs_idxs_and_scores=cci_outputs_idxs_and_scores,
             has_output_context=has_output_context,
+            console=console,
         )
+    if len(cti_tok_idxs_and_scores) > 0:
+        console.save_html(args.viz_path)
 
 
 if __name__ == "__main__":

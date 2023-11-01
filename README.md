@@ -215,9 +215,9 @@ python scripts/translate.py \
     --dataset_config lexical-choice
 
 python scripts/translate.py \
-    --model_type marian-big \
-    --model_id marian-big \
-    --model_name Helsinki-NLP/opus-mt-tc-big-en-fr \
+    --model_type mbart50-1toM \
+    --model_id mbart50-1toM-scat \
+    --model_name context-mt/scat-mbart50-1toM-ctx4-cwd1-en-fr \
     --context_size 0 \
     --dataset disc_eval_mt \
     --context_word_dropout 0 \
@@ -227,6 +227,26 @@ python scripts/translate.py \
 ### Evaluate a Context-Aware NMT Model
 
 ```shell
+python scripts/evaluate_mt_outputs.py \
+    --filepath outputs/translations/ctx/scat-marian-small-scat-target.txt \
+    --model_id marian-small-scat-target \
+    --dataset scat \
+    --src_lang eng \
+    --tgt_lang fra \
+    --metrics bleu comet accuracy flip \
+    --has_target_context \
+    --max_idx 250
+
+python scripts/evaluate_mt_outputs.py \
+    --filepath outputs/translations/ctx/disc_eval_mt-anaphora-marian-small-scat-target.txt \
+    --model_id marian-small-scat-target \
+    --dataset disc_eval_mt \
+    --src_lang eng \
+    --tgt_lang fra \
+    --metrics bleu comet accuracy flip \
+    --has_target_context \
+    --max_idx 250
+
 python scripts/evaluate_mt_outputs.py \
     --filepath outputs/translations/ctx/scat-mbart50-1toM-scat.txt \
     --model_id mbart50-1toM-scat \
@@ -249,13 +269,14 @@ python scripts/evaluate_mt_outputs.py \
 ```shell
 python scripts/generate_examples.py \
     --dataset scat \
-    --model_name context-mt/scat-marian-small-ctx4-cwd1-en-fr \
+    --model_name context-mt/scat-marian-small-target-ctx4-cwd0-en-fr \
     --src_lang eng \
     --tgt_lang fra \
-    --model_id marian-small-scat \
+    --model_id marian-small-scat-target \
     --model_type marian-small \
     --has_context \
-    --has_contrast
+    --has_contrast \
+    --has_target_context
 
 python scripts/generate_examples.py \
     --dataset scat \

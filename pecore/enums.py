@@ -5,6 +5,7 @@ class ModelTypeEnum(StrEnum):
     MBART = "mbart50-1toM"
     MARIAN_BIG = "marian-big"
     MARIAN_SMALL = "marian-small"
+    NLLB = "nllb"
 
 
 class DatasetEnum(StrEnum):
@@ -18,6 +19,7 @@ class MetricEnum(StrEnum):
     BLEU = "bleu"
     COMET = "comet"
     ACCURACY = "accuracy"
+    FLIP = "flip"
 
 
 class AttributeFnEnum(StrEnum):
@@ -36,6 +38,8 @@ class CTIMetricsEnum(StrEnum):
     RANDOM = "random"
     PCXMI = "pcxmi"
     KL_DIVERGENCE = "kl_divergence"
+    LIKELIHOOD_RATIO = "likelihood_ratio"
+    CTX_SALIENCY = "ctx_saliency"
     CTI_MIX = "cti_mix"
 
 
@@ -47,6 +51,8 @@ class CCIMetricsEnum(StrEnum):
     IXG_KL_DIV = "input_x_gradient_kl_divergence"
     ATTN_ALLMEAN = "attention_default"
     ATTN_BEST = "attention_best"
+    ATTN_2L8H = "attention_2l_8h"
+    ATTN_4L5H = "attention_4l_5h"
 
 
 class TaggedDatasetEnum(StrEnum):

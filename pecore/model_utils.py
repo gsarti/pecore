@@ -3,7 +3,6 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Union
 
 import yaml
-from inseq import AttributionModel
 from transformers import (
     M2M100ForConditionalGeneration,
     MBartForConditionalGeneration,
@@ -11,6 +10,8 @@ from transformers import (
     PreTrainedModel,
     PreTrainedTokenizer,
 )
+
+from inseq import AttributionModel
 
 
 @dataclass

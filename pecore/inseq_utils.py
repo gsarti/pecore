@@ -3,9 +3,10 @@ import warnings
 from itertools import product
 from typing import Any, Dict, List, Optional, Protocol, Tuple, Union
 
-import inseq
 import pandas as pd
 import torch
+
+import inseq
 from inseq import AttributionModel, FeatureAttributionOutput
 from inseq.attr.step_functions import StepFunctionArgs, _get_contrast_output
 from inseq.data import FeatureAttributionInput
@@ -27,7 +28,6 @@ logger = logging.getLogger(__name__)
 
 def kl_div_per_layer_fn(
     args: StepFunctionArgs,
-    contrast_target_prefixes: Optional[FeatureAttributionInput] = None,
     contrast_sources: Optional[FeatureAttributionInput] = None,
     contrast_targets: Optional[FeatureAttributionInput] = None,
     contrast_targets_alignments: Optional[List[List[Tuple[int, int]]]] = None,
@@ -108,15 +108,19 @@ def base_attribute_fn(
     target_current = example.gold_target_current if use_gold_target_current else example.generated_target_current
     target_context = example.gold_target_context if use_gold_target_context else example.generated_target_context
     has_target_context = target_context is not None and pd.notnull(target_context)
-    if has_target_context and use_context_separator:
-        target_context = target_context + context_separator
+    target_full = None
+    if has_target_context:
+        if use_context_separator:
+            target_full = target_context + context_separator + target_current
+        else:
+            target_full = target_context + " " + target_current
     out = model.attribute(
         example.source_current,
         target_current,
         attribute_target=True,
         step_scores=["probability", "contrast_prob", "contrast_prob_diff", "pcxmi", "kl_divergence"],
         contrast_sources=example.source_full,
-        contrast_target_prefixes=target_context if has_target_context else None,
+        contrast_targets=target_full,
         show_progress=False,
     )
     return out_to_df(out, curr_idx)
@@ -512,10 +516,10 @@ def get_imputation_scores_df(
                     unit_sizes = dict(zip(units_names, source_scores_size[::-1][: len(units_names)]))
                     unit_combinations = product(*[range(unit_sizes[unit]) for unit in units_names])
                     for unit_combination in unit_combinations:
-                        unit_combination = tuple(reversed(unit_combination))
-                        name_id = "_".join([f"{unit}{idx}" for unit, idx in zip(unit_combination, units_names)])
+                        rev_unit_combination = tuple(reversed(unit_combination))
+                        name_id = "_".join([f"{unit}{idx}" for unit, idx in zip(rev_unit_combination, units_names)])
                         curr_scores_df[f"{attribution_method}_{name_id}"] = unaggr_source_context_scores[
-                            (...,) + unit_combination
+                            (...,) + rev_unit_combination
                         ]
                 if has_target_context:
                     target_context_scores = aggr_out.target_attributions[
@@ -539,10 +543,12 @@ def get_imputation_scores_df(
                         unit_sizes = dict(zip(units_names, target_scores_size[::-1][: len(units_names)]))
                         unit_combinations = product(*[range(unit_sizes[unit]) for unit in units_names])
                         for unit_combination in unit_combinations:
-                            unit_combination = tuple(reversed(unit_combination))
-                            name_id = "_".join([f"{unit}{idx}" for unit, idx in zip(unit_combination, units_names)])
+                            rev_unit_combination = tuple(reversed(unit_combination))
+                            name_id = "_".join(
+                                [f"{unit}{idx}" for unit, idx in zip(rev_unit_combination, units_names)]
+                            )
                             curr_scores_target_df[f"{attribution_method}_{name_id}"] = unaggr_target_context_scores[
-                                (...,) + unit_combination
+                                (...,) + rev_unit_combination
                             ]
                     curr_scores_df = pd.concat([curr_scores_df, curr_scores_target_df], ignore_index=True)
                 if curr_idx_out_df is None:

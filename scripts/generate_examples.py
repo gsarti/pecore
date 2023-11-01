@@ -3,7 +3,6 @@ import logging
 from pathlib import Path
 from pprint import pprint
 
-import inseq
 import pandas as pd
 import stanza
 import torch
@@ -11,6 +10,8 @@ from pecore.data_utils import load_mt_dataset
 from pecore.enums import DatasetEnum, ModelTypeEnum
 from pecore.model_utils import get_lang_from_model_type, has_lang_tag
 from tqdm import tqdm
+
+import inseq
 
 logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s  %(message)s",
@@ -231,16 +232,27 @@ def format_examples():
                 generated_target = model.generate(
                     source, skip_special_tokens=not args.has_target_context, **generate_kwargs
                 )[0].strip()
+                generated_target_current_noctx = model.generate(
+                    ex[src_current_column], skip_special_tokens=True, **generate_kwargs
+                )[0].strip()
                 for st in args.special_tokens:
-                    generated_target = generated_target.replace(st, "")
+                    generated_target = generated_target.replace(st, "").strip()
                 torch.cuda.empty_cache()
+                generated_target_split = generated_target.split("<brk>")
                 if args.has_context and args.has_target_context:
-                    generated_target_context = generated_target.split("<brk>")[0].strip()
-                start_pos = len(generated_target_context) if generated_target_context else 0
-                generated_target_current = generated_target[start_pos:].strip("<brk> ")
+                    if len(generated_target_split) > 0:
+                        generated_target_context = generated_target_split[0].strip()
+                if generated_target_context is not None:
+                    if len(generated_target_split) > 1:
+                        generated_target_current = generated_target_split[1].strip()
+                    else:
+                        generated_target_current = None
+                else:
+                    generated_target_current = generated_target
             curr_example["generated_target_full"] = generated_target
             curr_example["generated_target_current"] = generated_target_current
             curr_example["generated_target_context"] = generated_target_context
+            curr_example["generated_target_current_noctx"] = generated_target_current_noctx
             examples.append(curr_example)
         if _idx < 3:
             pprint(curr_example)

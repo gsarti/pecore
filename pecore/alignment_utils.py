@@ -1,9 +1,10 @@
 import re
 from typing import Any, List, Optional, Tuple
 
+from stanza import Pipeline
+
 from inseq import AttributionModel
 from inseq.utils.alignment_utils import align_tokenizations, compute_word_aligns
-from stanza import Pipeline
 
 from .enums import ModelTypeEnum
 from .model_utils import get_model_attribute, has_lang_tag
@@ -63,6 +64,7 @@ def get_match_from_tagged_contrastive_pair(
     tagged_ref_text: str,
     tagged_contrast_ref_text: str,
     pred_text: str,
+    fulltext_match: bool = False,
 ) -> List[int]:
     """Returns a list of 0s and 1s, where 0 means that the word is not in the MT output and 1 means that it is."""
     tag_content_pattern = r"<\w+>(.+?)</?\w+>"
@@ -70,15 +72,24 @@ def get_match_from_tagged_contrastive_pair(
     tagged_contrast_ref_tok = re.findall(tag_content_pattern, tagged_contrast_ref_text)
     if not isinstance(pred_text, str):
         return [0]
-    pred_tok = [x.lower() for x in re.findall(r"\w+\b", pred_text)]
     keywords = [ref.lower() for ref in tagged_ref_tok if ref not in tagged_contrast_ref_tok]
     out = []
-    for kw in keywords:
-        if kw not in pred_tok:
-            out += [0]
-        else:
-            out += [1]
-            pred_tok.remove(kw)
+    if fulltext_match:
+        pred_text = pred_text.lower()
+        for kw in keywords:
+            if kw not in pred_text:
+                out += [0]
+            else:
+                out += [1]
+                pred_text = pred_text.replace(kw, "", 1)
+    else:
+        pred_tok = [x.lower() for x in re.findall(r"\w+\b", pred_text)]
+        for kw in keywords:
+            if kw not in pred_tok:
+                out += [0]
+            else:
+                out += [1]
+                pred_tok.remove(kw)
     return out
 
 
