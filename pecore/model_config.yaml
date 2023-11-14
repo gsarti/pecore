@@ -28,3 +28,7 @@ nllb:
     nld: nld_Latn
     ara: ara_Arab
     tur: tur_Latn
+gpt2:
+  batch_size: 1
+  num_layers: 12
+  num_heads: 12

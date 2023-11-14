@@ -5,12 +5,13 @@ from typing import Any, Dict, List, Optional, Protocol, Tuple, Union
 
 import pandas as pd
 import torch
+import torch.nn.functional as F
 
 import inseq
 from inseq import AttributionModel, FeatureAttributionOutput
-from inseq.attr.step_functions import StepFunctionArgs, _get_contrast_output
+from inseq.attr.step_functions import StepFunctionArgs, _get_contrast_inputs
 from inseq.data import FeatureAttributionInput
-from inseq.utils import logits_kl_divergence
+from inseq.utils import filter_logits
 
 from .alignment_utils import get_model_cue_target_tags, tokenize_subwords
 from .data_utils import DatasetExample
@@ -38,33 +39,41 @@ def kl_div_per_layer_fn(
     """Compute the KL divergence between original and contrastive probabilities at every layer of the model using the
     logit lens approach to project intermediate hidden states to logits.
     """
-
+    if args.is_attributed_fn:
+        raise ValueError("This step function cannot be used as attribution target.")
     original_batch = args.attribution_model.formatter.convert_args_to_batch(args)
     original_output = args.attribution_model.get_forward_output(
         original_batch,
         output_hidden_states=True,
     )
-    contrast_output = _get_contrast_output(
+    c_inputs = _get_contrast_inputs(
         args,
         contrast_sources=contrast_sources,
-        contrast_target_prefixes=contrast_target_prefixes,
         contrast_targets=contrast_targets,
         contrast_targets_alignments=contrast_targets_alignments,
-        output_hidden_states=True,
+        return_contrastive_batch=True,
     )
+    contrast_output = args.attribution_model.get_forward_output(c_inputs.batch, output_hidden_states=True)
     all_kl_divergences = []
     for i in range(len(original_output.decoder_hidden_states) - 1):
         original_logits = args.attribution_model.model.lm_head(original_output.decoder_hidden_states[i][:, -1, :])
         contrast_logits = args.attribution_model.model.lm_head(contrast_output.decoder_hidden_states[i][:, -1, :])
         original_logits = original_logits + args.attribution_model.model.final_logits_bias
         contrast_logits = contrast_logits + args.attribution_model.model.final_logits_bias
-        kl_divergence = logits_kl_divergence(
+        filtered_original_logits, filtered_contrast_logits = filter_logits(
             original_logits=original_logits,
             contrast_logits=contrast_logits,
             top_p=top_p,
             top_k=top_k,
             min_tokens_to_keep=min_tokens_to_keep,
         )
+        filtered_original_logprobs = F.log_softmax(filtered_original_logits, dim=-1)
+        filtered_contrast_logprobs = F.log_softmax(filtered_contrast_logits, dim=-1)
+        kl_divergence = torch.zeros(filtered_original_logprobs.size(0))
+        for j in range(filtered_original_logits.size(0)):
+            kl_divergence[j] = F.kl_div(
+                filtered_contrast_logprobs[j], filtered_original_logprobs[j], reduction="sum", log_target=True
+            )
         all_kl_divergences.append(kl_divergence)
     return torch.stack(all_kl_divergences, dim=1)
 
@@ -139,8 +148,12 @@ def top_p_attribute_fn(
     target_current = example.gold_target_current if use_gold_target_current else example.generated_target_current
     target_context = example.gold_target_context if use_gold_target_context else example.generated_target_context
     has_target_context = target_context is not None and pd.notnull(target_context)
-    if has_target_context and use_context_separator:
-        target_context = target_context + context_separator
+    target_full = None
+    if has_target_context:
+        if use_context_separator:
+            target_full = target_context + context_separator + target_current
+        else:
+            target_full = target_context + " " + target_current
     for top_p in [0.1, 0.3, 0.5, 0.7, 0.9]:
         out = model.attribute(
             example.source_current,
@@ -148,7 +161,7 @@ def top_p_attribute_fn(
             attribute_target=True,
             step_scores=["kl_divergence", "top_p_size"],
             contrast_sources=example.source_full,
-            contrast_target_prefixes=target_context if has_target_context else None,
+            contrast_targets=target_full,
             show_progress=False,
             top_p=top_p,
         )
@@ -175,15 +188,19 @@ def logit_lens_attribute_fn(
     target_current = example.gold_target_current if use_gold_target_current else example.generated_target_current
     target_context = example.gold_target_context if use_gold_target_context else example.generated_target_context
     has_target_context = target_context is not None and pd.notnull(target_context)
-    if has_target_context and use_context_separator:
-        target_context = target_context + context_separator
+    target_full = None
+    if has_target_context:
+        if use_context_separator:
+            target_full = target_context + context_separator + target_current
+        else:
+            target_full = target_context + " " + target_current
     out = model.attribute(
         example.source_current,
         target_current,
         attribute_target=True,
         step_scores=["kl_div_per_layer"],
         contrast_sources=example.source_full,
-        contrast_target_prefixes=target_context if has_target_context else None,
+        contrast_targets=target_full,
         show_progress=False,
     )
     for layer_idx in range(out[0].step_scores["kl_div_per_layer"].shape[0]):
@@ -332,6 +349,7 @@ def prepare_cci_params(
     output_context: str,
     output_current: str,
     input_current: str,
+    input_full: str,
     impute_with_contextless_output: bool,
     ctx_break: str,
     cti_tok_idx: int,
@@ -339,23 +357,31 @@ def prepare_cci_params(
     model_has_lang_tag: bool,
     force_context_aware_output_prefix: bool,
     gen_kwargs: Dict[str, Any] = {},
+    contextless_output: Optional[str] = None,
 ) -> Tuple[str, Union[List[Tuple[int, int]], str], int, int]:
     lang_tag_offset = 1 if model_has_lang_tag else 0
-    if force_context_aware_output_prefix:
-        output_current_enc = model.encode(output_current, as_targets=True)
+    if force_context_aware_output_prefix and model.is_encoder_decoder:
+        output_current_enc = model.encode(output_current, as_targets=model.is_encoder_decoder)
         gen_kwargs["decoder_input_ids"] = output_current_enc.input_ids[:, : cti_tok_idx + 1 + lang_tag_offset]
     offset = 0
+    if not model.is_encoder_decoder:
+        offset += len(model.encode(input_full.strip(), as_targets=False, add_bos_token=False).input_tokens[0])
     if has_output_context:
         output_context_tokens = model.encode(
-            output_context.strip(ctx_break), as_targets=True, add_bos_token=not model_has_lang_tag
+            output_context.strip(ctx_break), as_targets=model.is_encoder_decoder, add_bos_token=not model_has_lang_tag
         ).input_tokens[0]
         # Drop EOS token
         offset = len(output_context_tokens) - 1
         # Assuming context break is a single token in model's vocabulary
         if model_use_ctx_break:
             offset += 1
+    if "max_new_tokens" not in gen_kwargs:
+        gen_kwargs["max_new_tokens"] = 200
     if impute_with_contextless_output:
-        output_current_contrast = model.generate(input_current, max_new_tokens=200, **gen_kwargs)[0]
+        output_current_contrast = model.generate(input_current, **gen_kwargs)[0]
+        aligns = "auto"
+    elif contextless_output is not None:
+        output_current_contrast = contextless_output
         aligns = "auto"
     else:
         output_current_contrast = output_current
@@ -372,7 +398,7 @@ def prepare_cci_params(
             (idx_full, idx_curr) for idx_curr, idx_full in enumerate(range(offset, offset + curr_len), start=start)
         ]
     # +1 for lang tag if present, BOS otherwise
-    pos_start = offset + cti_tok_idx + 1
+    pos_start = offset + cti_tok_idx + lang_tag_offset
     return output_current_contrast, aligns, pos_start
 
 
