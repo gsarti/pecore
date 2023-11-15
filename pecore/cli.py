@@ -181,6 +181,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="If specified, the contrastive inputs are used for attribution, otherwise the original inputs are used.",
     )
+    parser.add_argument(
+        "--load_in_8bit",
+        action="store_true",
+        help="If specified, the model is loaded in 8-bit quantized mode.",
+    )
     args = parser.parse_args()
     if args.ctx_break not in args.input:
         raise ValueError(
@@ -476,7 +481,9 @@ def visualize_pecore_example(
 
 def pecore_viz():
     args = parse_args()
-    model = inseq.load_model(args.model_name, args.attribution_method)
+    model = inseq.load_model(
+        args.model_name, args.attribution_method, load_in_8bit=args.load_in_8bit, device_map="auto"
+    )
     model_has_lang_tag = has_lang_tag(model)
     gen_kwargs = {"max_new_tokens": 100}
     lang_tag_offset = 1 if model_has_lang_tag else 0
