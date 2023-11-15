@@ -36,3 +36,6 @@ mistral:
   batch_size: 1
   num_layers: 32
   num_heads: 32
+llama:
+  num_layers: 24
+  num_heads: 16

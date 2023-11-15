@@ -482,7 +482,9 @@ def visualize_pecore_example(
 def pecore_viz():
     args = parse_args()
     model = inseq.load_model(
-        args.model_name, args.attribution_method, load_in_8bit=args.load_in_8bit, device_map="auto"
+        args.model_name,
+        args.attribution_method,
+        model_kwargs={"load_in_8bit": args.load_in_8bit, "device_map": "auto"},
     )
     model_has_lang_tag = has_lang_tag(model)
     gen_kwargs = {"max_new_tokens": 100}
