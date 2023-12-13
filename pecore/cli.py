@@ -484,7 +484,7 @@ def pecore_viz():
     model = inseq.load_model(
         args.model_name,
         args.attribution_method,
-        model_kwargs={"load_in_8bit": args.load_in_8bit, "device_map": "auto"},
+        model_kwargs={"load_in_8bit": args.load_in_8bit, "device_map": "auto" if args.load_in_8bit else None},
     )
     model_has_lang_tag = has_lang_tag(model)
     gen_kwargs = {"max_new_tokens": 100}
