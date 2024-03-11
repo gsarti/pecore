@@ -4,7 +4,7 @@
 
 <p float="left">
     <img src="img/pecore.png" alt="PECoRe two-step process" width="300"/>
-    <img src="img/examples.jpeg" alt="PECoRe examples" width="500"/>
+    <img src="img/examples.png" alt="PECoRe examples" width="500"/>
 </p>
 
 > **Abstract:** Establishing whether language models can use contextual information in a human-plausible way is important to ensure their safe adoption in real-world settings. However, the questions of when and which parts of the context affect model generations are typically tackled separately, and current plausibility evaluations are practically limited to a handful of artificial benchmarks. To address this, we introduce Plausibility Evaluation of Context Reliance (PECoRe), an end-to-end interpretability framework designed to quantify context usage in language models’ generations. Our approach leverages model internals to (i) contrastively identify context-sensitive target tokens in generated texts and (ii) link them to contextual cues justifying their prediction. We use PECoRe to quantify the plausibility of context-aware machine translation models, comparing model rationales with human annotations across several discourse-level phenomena. Finally, we apply our method to unannotated generations to identify context-mediated predictions and highlight instances of (im)plausible context usage in model translations.

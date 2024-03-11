@@ -2,6 +2,7 @@ old/
 outputs/divemt_cli_viz
 notebooks/
 .vscode/launch.json
+.vscode/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
