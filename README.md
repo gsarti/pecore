@@ -1,4 +1,39 @@
-# PECoRe
+# Quantifying the Plausibility of Context Reliance in Neural Machine Translation
+
+[Gabriele Sarti](https://gsarti.com) • [Grzegorz Chrupała](https://grzegorz.chrupala.me/) • [Malvina Nissim](https://malvinanissim.github.io/) • [Arianna Bisazza](https://www.cs.rug.nl/~bisazza/)
+
+<p float="left">
+    <img src="img/pecore.png" alt="PECoRe two-step process" width="300"/>
+    <img src="img/examples.jpeg" alt="PECoRe examples" width="500"/>
+</p>
+
+> **Abstract:** Establishing whether language models can use contextual information in a human-plausible way is important to ensure their safe adoption in real-world settings. However, the questions of when and which parts of the context affect model generations are typically tackled separately, and current plausibility evaluations are practically limited to a handful of artificial benchmarks. To address this, we introduce Plausibility Evaluation of Context Reliance (PECoRe), an end-to-end interpretability framework designed to quantify context usage in language models’ generations. Our approach leverages model internals to (i) contrastively identify context-sensitive target tokens in generated texts and (ii) link them to contextual cues justifying their prediction. We use PECoRe to quantify the plausibility of context-aware machine translation models, comparing model rationales with human annotations across several discourse-level phenomena. Finally, we apply our method to unannotated generations to identify context-mediated predictions and highlight instances of (im)plausible context usage in model translations.
+
+This repository contains scripts and notebooks associated to the paper ["Quantifying the Plausibility of Context Reliance in Neural Machine Translation"](https://openreview.net/forum?id=XTHfNGI3zT). If you use any of the following contents for your work, we kindly ask you to cite our paper:
+
+```bibtex
+@inproceedings{sarti-etal-2023-quantifying,
+    title = "Quantifying the Plausibility of Context Reliance in Neural Machine Translation",
+    author = "Sarti, Gabriele and 
+        Chrupa{\l}a, Grzegorz and 
+        Nissim, Malvina and
+        Bisazza, Arianna",
+    booktitle = "The Twelfth International Conference on Learning Representations (ICLR 2024)",
+    month = may,
+    year = "2024",
+    address = "Vienna, Austria",
+    publisher = "OpenReview",
+    url = "https://openreview.net/forum?id=XTHfNGI3zT"
+}
+```
+
+### Using PECoRe
+
+While this repository implements the functions used in the experimental evaluation of the aforementioned paper, we provide a new CLI implementation of PECoRe through the [Inseq interpretability library](https://github.com/inseq-team/inseq). We highly advise researchers to adopt that implementation as it is more robust and generalizable, supporting all decoder-only and encoder-decoder models from the Huggingface library for input and output context dependence detection and attribution. Refer to the `inseq attribute-context` section in the Inseq README for more details.
+
+### Artifacts
+
+All artifacts for the paper, including fine-tuned models and training/evaluation datasets are available in the [PECoRe HuggingFace Collection](https://huggingface.co/collections/gsarti/pecore-iclr-2024-65edab42e28439e21b612c2e). A demo will be made available soon, stay tuned!
 
 ### Train a Context-Aware NMT Model
 
