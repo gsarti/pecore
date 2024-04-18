@@ -29,7 +29,8 @@ This repository contains scripts and notebooks associated to the paper ["Quantif
 
 ### Using PECoRe
 
-> ✨ **NEW!** You can try PECoRe from our online demo on [Hugging Face Spaces](https://huggingface.co/spaces/gsarti/pecore).
+> [!TIP]
+> ✨ You can try PECoRe from our online demo on [Hugging Face Spaces](https://huggingface.co/spaces/gsarti/pecore).
 
 While this repository implements the functions used in the experimental evaluation of the aforementioned paper, we provide a new CLI implementation of PECoRe through the [Inseq interpretability library](https://github.com/inseq-team/inseq). We highly advise researchers to adopt that implementation as it is more robust and generalizable, supporting all decoder-only and encoder-decoder models from the Huggingface library for input and output context dependence detection and attribution. Refer to the `inseq attribute-context` section in the Inseq README for more details.
 
